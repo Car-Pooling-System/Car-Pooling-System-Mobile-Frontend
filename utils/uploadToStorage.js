@@ -48,12 +48,13 @@ export const deleteFromStorage = async (url) => {
         await deleteObject(fileRef);
         console.log("File deleted successfully:", url);
     } catch (error) {
-        console.error("Error deleting file:", error);
-
         if (error.code === 'storage/object-not-found') {
-            console.warn("File already doesn't exist or was never uploaded");
+            // Treat missing objects as already-deleted so DB/state cleanup can continue.
+            console.log("File already removed from storage:", url);
         } else if (error.code === 'storage/unauthorized') {
             console.error("Permission denied - check Firebase Storage rules");
+        } else {
+            console.error("Error deleting file:", error);
         }
     }
 };

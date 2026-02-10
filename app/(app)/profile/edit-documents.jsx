@@ -113,8 +113,8 @@ export default function EditDocuments() {
                 copyToCacheDirectory: true
             });
 
-            if (result.type === 'success' && result.uri) {
-                await uploadDocument(result, docType);
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                await uploadDocument(result.assets[0], docType);
             }
         } catch (error) {
             console.error("Error picking document:", error);
@@ -180,9 +180,7 @@ export default function EditDocuments() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    documents: documents
-                })
+                body: JSON.stringify(documents)
             });
 
             if (!response.ok) {
