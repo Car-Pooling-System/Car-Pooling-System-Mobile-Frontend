@@ -37,7 +37,7 @@ export default function TabsLayout() {
                         iconName = focused ? "add-circle" : "add-circle-outline";
                     } else if (route.name === "my-rides/index") {
                         iconName = focused ? "car" : "car-outline";
-                    } else if (route.name === "profile/index") {
+                    } else if (route.name === "profile") {
                         iconName = focused ? "person" : "person-outline";
                     } else {
                         iconName = "ellipse";
@@ -60,7 +60,7 @@ export default function TabsLayout() {
         >
             <Tabs.Screen name="my-rides/index" options={{ title: "My Rides" }} />
             <Tabs.Screen name="hosting/index" options={{ title: "Create Ride" }} />
-            <Tabs.Screen name="profile/index" options={{ title: "Profile" }} />
+            <Tabs.Screen name="profile" options={{ title: "Profile" }} />
         </Tabs>
     );
 }
