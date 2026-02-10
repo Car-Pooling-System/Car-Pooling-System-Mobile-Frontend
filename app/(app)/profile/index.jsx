@@ -1,243 +1,289 @@
-import { View, Text, TouchableOpacity, Image, ScrollView, Switch, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, Image, ActivityIndicator, RefreshControl, TouchableOpacity, useColorScheme, Alert } from "react-native";
 import { useUser, useAuth } from "@clerk/clerk-expo";
-import { useColorScheme } from "react-native";
-import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "expo-router";
+import { useState, useEffect } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import tw from "twrnc";
 import { theme } from "../../../constants/Colors";
-import { BACKEND_URL } from "../../../constants/Imps";
-import { Ionicons } from "@expo/vector-icons";
+
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 export default function Profile() {
-    const { user, isLoaded } = useUser();
+    const { user } = useUser();
     const { signOut } = useAuth();
-    const router = useRouter();
     const scheme = useColorScheme();
     const colors = theme[scheme ?? "light"];
-
-    const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-    const [owed, setOwed] = useState(-1);
-    const [lent, setLent] = useState(-1);
+    console.log(user?.id);
+    const [driverData, setDriverData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
-    useEffect(() => {
-        if (!isLoaded || !user?.id) return;
+    const fetchDriverData = async () => {
+        if (!user?.id) {
+            console.log("User ID not available yet");
+            setLoading(false);
+            return;
+        }
 
-        const fetchData = async () => {
-            try {
-                setLoading(true);
-                const res = await fetch(`${BACKEND_URL}/api/net/${user.id}`);
-                if (!res.ok) throw new Error("Failed to fetch");
+        if (!BACKEND_URL) {
+            console.error("BACKEND_URL is not defined");
+            setLoading(false);
+            return;
+        }
 
-                const data = await res.json();
-                console.log("Fetched balance:", data);
+        const url = `${BACKEND_URL}/api/driver-profile/${user.id}`;
+        console.log("Fetching from:", url);
 
-                setOwed(data.owed ?? 0);
-                setLent(data.lent ?? 0);
-                setNotificationsEnabled(data.notifications ?? false);
-            } catch (err) {
-                console.error("Fetch failed:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchData();
-    }, [isLoaded, user?.id]);
-
-    const updateNotifications = useCallback(
-        async (newValue) => {
-            const previousValue = notificationsEnabled;
-            setNotificationsEnabled(newValue);
-
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/net/${user?.id}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ notifications: newValue }),
-                });
-
-                if (!res.ok) {
-                    throw new Error(`Server responded ${res.status}`);
-                }
-
-                // Optional: you can re-fetch full data here if needed
-                // but since we only updated one field → optimistic is fine
-            } catch (err) {
-                console.error("Failed to update notifications:", err);
-                // Rollback on error
-                setNotificationsEnabled(previousValue);
-                // Optional: show toast/alert
-            }
-        },
-        [notificationsEnabled, user?.id]
-    );
-
-    const handleSignOut = async () => {
         try {
-            await signOut();
-            router.replace("/(auth)/sign-in"); // adjust group if needed
-        } catch (err) {
-            console.error("Sign out failed:", err);
-            router.replace("/(auth)/sign-in"); // force
+            const response = await fetch(url);
+            console.log("Response status:", response.status);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            console.log("Driver data received:", data);
+            setDriverData(data);
+        } catch (error) {
+            console.error("Error fetching driver data:", error);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
         }
     };
 
-    if (!isLoaded || loading) {
+    useEffect(() => {
+        if (user?.id) {
+            fetchDriverData();
+        }
+    }, [user?.id]);
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchDriverData();
+    };
+
+    if (loading) {
         return (
-            <View
-                style={tw`flex-1 justify-center items-center bg-[${colors.background}]`}
-            >
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={tw`mt-4 text-[${colors.textSecondary}]`}>Loading...</Text>
+            <View style={tw`flex-1 justify-center items-center bg-white`}>
+                <ActivityIndicator size="large" color="#000" />
+                <Text style={tw`mt-4 text-gray-500`}>Loading profile...</Text>
             </View>
         );
     }
-
-    if (!user) {
-        return (
-            <View style={tw`flex-1 justify-center items-center`}>
-                <Text>Not signed in</Text>
-            </View>
-        );
-    }
-
-    const displayName =
-        `${user.unsafeMetadata?.firstName ?? user.firstName ?? ""} `.trim() + " " +
-        `${user.unsafeMetadata?.lastName ?? user.lastName ?? ""}`.trim();
 
     return (
         <ScrollView
-            style={{ backgroundColor: colors.background }}
-            contentContainerStyle={tw`pb-12`}
+            style={tw`flex-1 bg-gray-50`}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
             {/* Header */}
-            <View style={tw`items-center pt-6`}>
-                <View style={tw`mb-2`}>
-                    <Text style={tw`font-medium text-xl`}>Profile</Text>
-                </View>
-                <Image
-                    source={{ uri: user.imageUrl }}
-                    style={[tw`w-28 h-28 rounded-full`, { borderWidth: 4, borderColor: colors.primarySoft }]}
-                />
-                <Text style={[tw`text-xl font-bold mt-4`, { color: colors.textPrimary }]}>
-                    {displayName || "User"}
-                </Text>
-                <Text style={[tw`text-sm`, { color: colors.textSecondary }]}>
-                    <Text style={tw`font-bold`}>Email: </Text>{user.primaryEmailAddress?.emailAddress ?? "No email"}
-                </Text>
-                <Text style={[tw`text-sm`, { color: colors.textSecondary }]}>
-                    <Text style={tw`font-bold`}>User Name: </Text>{user?.fullName}
-                </Text>
-
-            </View>
-
-            {/* Stats – unchanged */}
-            <View style={tw`flex-row gap-4 px-4 mt-6`}>
-                <View
-                    style={[
-                        tw`flex-1 p-4 rounded-xl`,
-                        { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
-                    ]}
-                >
-                    <Text style={{ color: colors.textSecondary }}>
-                        <Ionicons name="arrow-down" color="red" /> Total Owed
-                    </Text>
-                    <Text style={[tw`text-2xl font-bold mt-1`, { color: colors.danger }]}>
-                        ₹{owed === -1 ? "—" : owed}
-                    </Text>
-                </View>
-
-                <View style={[tw`flex-1 p-4 rounded-xl`, { backgroundColor: colors.primarySoft }]}>
-                    <Text style={{ color: colors.textSecondary }}>
-                        <Ionicons name="arrow-up" color="green" /> Total Lent
-                    </Text>
-                    <Text style={[tw`text-2xl font-bold mt-1`, { color: colors.primary }]}>
-                        ₹{lent === -1 ? "—" : lent}
-                    </Text>
-                </View>
-            </View>
-
-            {/* Account Settings – unchanged */}
-            <Text style={[tw`px-4 mt-8 mb-2 font-bold`, { color: colors.textPrimary }]}>
-                Account Settings
-            </Text>
-
-            <TouchableOpacity
-                onPress={() => router.push("/profile/edit")}
-                style={[tw`flex-row items-center justify-between px-4 py-4`, { backgroundColor: colors.surface }]}
-            >
-                <Text style={{ color: colors.textPrimary }}>Edit Profile</Text>
-                <Text style={{ color: colors.textMuted }}>›</Text>
-            </TouchableOpacity>
-
-            {["Payment Methods", "Manage Groups"].map((item) => (
-                <View
-                    key={item}
-                    style={[tw`flex-row items-center justify-between px-4 py-4`, { backgroundColor: colors.surface }]}
-                >
-                    <Text style={{ color: colors.textPrimary }}>{item}</Text>
-                    <Text style={{ color: colors.textMuted }}>›</Text>
-                </View>
-            ))}
-
-            {/* Preferences */}
-            <Text style={[tw`px-4 mt-8 mb-2 font-bold`, { color: colors.textPrimary }]}>
-                Preferences
-            </Text>
-
-            <View>
-                <View
-                    style={[
-                        tw`flex-row items-center justify-between p-4 rounded-xl`,
-                        { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
-                    ]}
-                >
-                    <View>
-                        <Text style={[tw`text-base font-medium`, { color: colors.textPrimary }]}>
-                            Notifications
+            <View style={tw`bg-white p-6 mb-3`}>
+                <View style={tw`flex-row items-center`}>
+                    {user?.imageUrl || driverData?.profileImage ? (
+                        <Image
+                            source={{ uri: user?.imageUrl || driverData?.profileImage }}
+                            style={tw`w-20 h-20 rounded-full bg-gray-200`}
+                        />
+                    ) : (
+                        <View style={tw`w-20 h-20 rounded-full bg-gray-300 justify-center items-center`}>
+                            <Ionicons name="person" size={40} color="#666" />
+                        </View>
+                    )}
+                    <View style={tw`ml-4 flex-1`}>
+                        <Text style={tw`text-2xl font-bold`}>
+                            {user?.firstName || "Driver"} {user?.lastName || ""}
                         </Text>
-                        <Text style={[tw`text-xs mt-1`, { color: colors.textSecondary }]}>
-                            Get updates about bills & payments
+                        <Text style={tw`text-gray-600 text-sm mt-1`}>
+                            {user?.primaryEmailAddress?.emailAddress}
                         </Text>
+                        {driverData?.phoneNumber && (
+                            <View style={tw`flex-row items-center mt-1`}>
+                                <Ionicons name="call" size={14} color="#666" />
+                                <Text style={tw`text-gray-600 text-sm ml-1`}>
+                                    {driverData.phoneNumber}
+                                </Text>
+                            </View>
+                        )}
                     </View>
-                    <Switch
-                        value={notificationsEnabled}
-                        onValueChange={updateNotifications}  // ← now saves to DB
-                        trackColor={{ false: colors.surfaceMuted, true: colors.primary }}
-                        thumbColor={notificationsEnabled ? "#fff" : "#f4f4f5"}
+                </View>
+            </View>
+
+            {/* Statistics */}
+            <View style={tw`bg-white p-6 mb-3`}>
+                <Text style={tw`text-xl font-bold mb-4`}>Statistics</Text>
+                <View style={tw`flex-row justify-between`}>
+                    <View style={tw`items-center flex-1 bg-blue-50 p-4 rounded-xl mr-2`}>
+                        <Text style={tw`text-3xl font-bold text-blue-600`}>
+                            {driverData?.rides?.completed || 0}
+                        </Text>
+                        <Text style={tw`text-gray-600 text-sm mt-1`}>Completed</Text>
+                    </View>
+                    <View style={tw`items-center flex-1 bg-green-50 p-4 rounded-xl mx-1`}>
+                        <Text style={tw`text-3xl font-bold text-green-600`}>
+                            {driverData?.rating?.average?.toFixed(1) || "0.0"}
+                        </Text>
+                        <Text style={tw`text-gray-600 text-sm mt-1`}>Rating</Text>
+                    </View>
+                    <View style={tw`items-center flex-1 bg-purple-50 p-4 rounded-xl ml-2`}>
+                        <Text style={tw`text-3xl font-bold text-purple-600`}>
+                            {driverData?.distanceDrivenKm || 0}
+                        </Text>
+                        <Text style={tw`text-gray-600 text-sm mt-1`}>km</Text>
+                    </View>
+                </View>
+            </View>
+
+            {/* Vehicle Information */}
+            {driverData?.vehicle && (
+                <View style={tw`bg-white p-6 mb-3`}>
+                    <View style={tw`flex-row items-center mb-4`}>
+                        <Ionicons name="car-sport" size={24} color="#000" />
+                        <Text style={tw`text-xl font-bold ml-2`}>Vehicle Information</Text>
+                    </View>
+                    <View style={tw`bg-gray-50 p-4 rounded-xl`}>
+                        <InfoRow label="Brand" value={driverData.vehicle.brand} />
+                        <InfoRow label="Model" value={driverData.vehicle.model} />
+                        <InfoRow label="Year" value={driverData.vehicle.year} />
+                        <InfoRow label="Color" value={driverData.vehicle.color} />
+                        <InfoRow label="License Plate" value={driverData.vehicle.licensePlate} />
+                    </View>
+                    {driverData.vehicle.images?.length > 0 && (
+                        <View style={tw`mt-4`}>
+                            <Text style={tw`font-semibold mb-2`}>Vehicle Images</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                {driverData.vehicle.images.map((img, i) => (
+                                    <Image
+                                        key={i}
+                                        source={{ uri: img }}
+                                        style={tw`w-32 h-24 rounded-lg mr-3 bg-gray-200`}
+                                    />
+                                ))}
+                            </ScrollView>
+                        </View>
+                    )}
+                </View>
+            )}
+
+            {/* Verification Status */}
+            <View style={tw`bg-white p-6 mb-3`}>
+                <View style={tw`flex-row items-center mb-4`}>
+                    <Ionicons name="shield-checkmark" size={24} color="#000" />
+                    <Text style={tw`text-xl font-bold ml-2`}>Verification Status</Text>
+                </View>
+                <View style={tw`bg-gray-50 p-4 rounded-xl`}>
+                    <VerificationRow
+                        label="Email"
+                        verified={driverData?.verification?.emailVerified}
+                    />
+                    <VerificationRow
+                        label="Phone"
+                        verified={driverData?.verification?.phoneVerified}
+                    />
+                    <VerificationRow
+                        label="Driving License"
+                        verified={driverData?.verification?.drivingLicenseVerified}
+                    />
+                    <VerificationRow
+                        label="Vehicle"
+                        verified={driverData?.verification?.vehicleVerified}
                     />
                 </View>
+            </View>
 
-                {/* Privacy row (placeholder) */}
-                <View
-                    style={[
-                        tw`flex-row items-center justify-between p-4 rounded-xl mt-3`,
-                        { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
-                    ]}
-                >
-                    <View>
-                        <Text style={[tw`text-base font-medium`, { color: colors.textPrimary }]}>
-                            Privacy and Security
-                        </Text>
-                        <Text style={[tw`text-xs mt-1`, { color: colors.textSecondary }]}>
-                            Read the policy here
-                        </Text>
+            {/* Documents */}
+            {driverData?.documents && (
+                <View style={tw`bg-white p-6 mb-6`}>
+                    <View style={tw`flex-row items-center mb-4`}>
+                        <Ionicons name="document-text" size={24} color="#000" />
+                        <Text style={tw`text-xl font-bold ml-2`}>Documents</Text>
+                    </View>
+                    <View style={tw`bg-gray-50 p-4 rounded-xl`}>
+                        <DocumentRow label="Driving License" url={driverData.documents.drivingLicense} />
+                        <DocumentRow label="Vehicle Registration" url={driverData.documents.vehicleRegistration} />
+                        <DocumentRow label="Insurance" url={driverData.documents.insurance} />
                     </View>
                 </View>
+            )}
 
-                {/* Sign Out */}
-                <View style={tw`items-center mt-8`}>
-                    <TouchableOpacity
-                        style={[tw`p-4 rounded-2xl w-[80%]`, { backgroundColor: colors.dangerSoft }]}
-                        onPress={handleSignOut}
-                    >
-                        <Text style={[tw`text-center font-bold`, { color: colors.danger }]}>
-                            Sign Out
-                        </Text>
-                    </TouchableOpacity>
-                </View>
+            {/* Logout Button */}
+            <View style={tw`bg-white p-6 mb-6`}>
+                <TouchableOpacity
+                    onPress={() => {
+                        Alert.alert(
+                            "Sign Out",
+                            "Are you sure you want to sign out?",
+                            [
+                                {
+                                    text: "Cancel",
+                                    style: "cancel"
+                                },
+                                {
+                                    text: "Sign Out",
+                                    style: "destructive",
+                                    onPress: async () => {
+                                        try {
+                                            await signOut();
+                                        } catch (error) {
+                                            console.error("Error signing out:", error);
+                                        }
+                                    }
+                                }
+                            ]
+                        );
+                    }}
+                    style={[
+                        tw`flex-row items-center justify-center py-4 rounded-xl`,
+                        { backgroundColor: colors.danger }
+                    ]}
+                >
+                    <Ionicons name="log-out-outline" size={24} color="white" style={tw`mr-2`} />
+                    <Text style={tw`text-white font-bold text-lg`}>Sign Out</Text>
+                </TouchableOpacity>
             </View>
         </ScrollView>
+    );
+}
+
+function InfoRow({ label, value }) {
+    return (
+        <View style={tw`flex-row justify-between py-2 border-b border-gray-200`}>
+            <Text style={tw`text-gray-600`}>{label}</Text>
+            <Text style={tw`font-semibold`}>{value || "N/A"}</Text>
+        </View>
+    );
+}
+
+function VerificationRow({ label, verified }) {
+    return (
+        <View style={tw`flex-row justify-between items-center py-2 border-b border-gray-200`}>
+            <Text style={tw`text-gray-700`}>{label}</Text>
+            <View
+                style={tw`px-3 py-1 rounded-full ${verified ? "bg-green-100" : "bg-red-100"
+                    }`}
+            >
+                <Text
+                    style={tw`text-xs font-semibold ${verified ? "text-green-700" : "text-red-700"
+                        }`}
+                >
+                    {verified ? "Verified" : "Not Verified"}
+                </Text>
+            </View>
+        </View>
+    );
+}
+
+function DocumentRow({ label, url }) {
+    return (
+        <View style={tw`flex-row justify-between items-center py-2 border-b border-gray-200`}>
+            <Text style={tw`text-gray-700`}>{label}</Text>
+            {url ? (
+                <View style={tw`flex-row items-center`}>
+                    <Ionicons name="checkmark-circle" size={16} color="#10b981" />
+                    <Text style={tw`text-blue-500 text-sm ml-1`}>Uploaded</Text>
+                </View>
+            ) : (
+                <Text style={tw`text-gray-400 text-sm`}>Not uploaded</Text>
+            )}
+        </View>
     );
 }

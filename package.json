@@ -11,6 +11,8 @@
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.20",
     "@expo/vector-icons": "^15.0.3",
+    "axios": "^1.13.5",
+    "dotenv": "^17.2.4",
     "expo": "~54.0.32",
     "expo-auth-session": "~7.0.10",
     "expo-constants": "~18.0.13",

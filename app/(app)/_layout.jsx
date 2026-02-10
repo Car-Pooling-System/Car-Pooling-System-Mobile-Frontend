@@ -2,11 +2,11 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useColorScheme } from "react-native";
 import { theme } from "../../constants/Colors";
-import { useUser, useAuth,  } from "@clerk/clerk-expo";
+import { useUser, useAuth, } from "@clerk/clerk-expo";
 import { Redirect } from "expo-router";
 
 export default function TabsLayout() {
-    const {user} = useUser();
+    const { user } = useUser();
     const { isSignedIn } = useAuth();
     if (!isSignedIn) {
         return <Redirect href={"/(auth)/sign-in"} />
@@ -33,11 +33,11 @@ export default function TabsLayout() {
                 tabBarIcon: ({ focused, color, size }) => {
                     let iconName;
 
-                    if (route.name === "explore") {
-                        iconName = focused ? "compass" : "compass-outline";
-                    } else if (route.name === "group") {
-                        iconName = focused ? "people" : "people-outline";
-                    } else if (route.name === "profile") {
+                    if (route.name === "hosting/index") {
+                        iconName = focused ? "add-circle" : "add-circle-outline";
+                    } else if (route.name === "my-rides/index") {
+                        iconName = focused ? "car" : "car-outline";
+                    } else if (route.name === "profile/index") {
                         iconName = focused ? "person" : "person-outline";
                     } else {
                         iconName = "ellipse";
@@ -46,7 +46,7 @@ export default function TabsLayout() {
                     return (
                         <Ionicons
                             name={iconName}
-                            size={focused ? 26 : 22}
+                            size={focused ? 28 : 24}
                             color={color}
                         />
                     );
@@ -58,9 +58,9 @@ export default function TabsLayout() {
                 },
             })}
         >
-            <Tabs.Screen name="explore" options={{ title: "Explore" }} />
-            <Tabs.Screen name="group" options={{ title: "Groups" }} />
-            <Tabs.Screen name="profile" options={{ title: "Profile" }} />
+            <Tabs.Screen name="my-rides/index" options={{ title: "My Rides" }} />
+            <Tabs.Screen name="hosting/index" options={{ title: "Create Ride" }} />
+            <Tabs.Screen name="profile/index" options={{ title: "Profile" }} />
         </Tabs>
     );
 }
