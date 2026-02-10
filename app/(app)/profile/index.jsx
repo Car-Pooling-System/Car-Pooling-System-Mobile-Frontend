@@ -214,7 +214,7 @@ export default function Profile() {
                                 method: 'PUT',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                    vehicle: { ...driverData.vehicle, images: newImages }
+                                    images: newImages
                                 })
                             });
 
@@ -255,7 +255,13 @@ export default function Profile() {
     };
 
     const handleAddVehicleImages = async () => {
+        let uploadedUrls = [];
         try {
+            if (!BACKEND_URL) {
+                Alert.alert("Configuration Error", "Backend URL is not configured.");
+                return;
+            }
+
             const currentImageCount = driverData?.vehicle?.images?.length || 0;
             const remainingSlots = 4 - currentImageCount;
 
@@ -293,34 +299,47 @@ export default function Profile() {
                     return await uploadToStorage(blob, `vehicles/${user.id}`, fileName);
                 });
 
-                const uploadedUrls = await Promise.all(uploadPromises);
+                uploadedUrls = await Promise.all(uploadPromises);
                 const newImages = [...(driverData.vehicle.images || []), ...uploadedUrls];
 
                 const response = await fetch(`${BACKEND_URL}/api/driver-vehicle/${user.id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        vehicle: { ...driverData.vehicle, images: newImages }
+                        images: newImages
                     })
                 });
 
-                if (response.ok) {
-                    // Update local state
-                    setDriverData(prev => ({
-                        ...prev,
-                        vehicle: { ...prev.vehicle, images: newImages }
-                    }));
-                    setEditedData(prev => ({
-                        ...prev,
-                        vehicle: { ...prev.vehicle, images: newImages }
-                    }));
-                    Alert.alert("Success", "Images uploaded!");
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Failed to update backend: ${response.status} ${errorText}`);
                 }
+
+                // Update local state
+                setDriverData(prev => ({
+                    ...prev,
+                    vehicle: { ...prev.vehicle, images: newImages }
+                }));
+                setEditedData(prev => ({
+                    ...prev,
+                    vehicle: { ...prev.vehicle, images: newImages }
+                }));
+                Alert.alert("Success", "Images uploaded!");
                 setUploading(false);
             }
         } catch (error) {
             console.error("Error uploading images:", error);
-            Alert.alert("Error", "Failed to upload images");
+
+            // Roll back newly uploaded storage files if DB update fails (including network failures).
+            if (uploadedUrls.length > 0) {
+                await deleteMultipleFromStorage(uploadedUrls);
+            }
+
+            if (error?.message?.includes("Network request failed")) {
+                Alert.alert("Network Error", "Could not reach backend. Check server status and EXPO_PUBLIC_BACKEND_URL.");
+            } else {
+                Alert.alert("Error", "Failed to upload images");
+            }
             setUploading(false);
         }
     };
@@ -385,9 +404,7 @@ export default function Profile() {
                 const response = await fetch(`${BACKEND_URL}/api/driver-docs/${user.id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        documents: { ...driverData.documents, [docType]: downloadURL }
-                    })
+                    body: JSON.stringify({ ...driverData.documents, [docType]: downloadURL })
                 });
 
                 if (!response.ok) {
@@ -440,9 +457,7 @@ export default function Profile() {
                             const response = await fetch(`${BACKEND_URL}/api/driver-docs/${user.id}`, {
                                 method: 'PUT',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    documents: { ...driverData.documents, [docType]: null }
-                                })
+                                body: JSON.stringify({ ...driverData.documents, [docType]: null })
                             });
 
                             if (!response.ok) {
