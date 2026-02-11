@@ -401,19 +401,37 @@ export default function CreateRide() {
 
                             {/* Preferences */}
                             <Text style={tw`text-xs font-bold text-gray-400 mb-2 uppercase`}>Preferences</Text>
-                            <View style={tw`flex-row justify-between mb-8`}>
+                            <View style={tw`flex-row flex-wrap gap-3 mb-8`}>
                                 {[
-                                    { label: "Pets", icon: "paw", value: petsAllowed, setter: setPetsAllowed },
-                                    { label: "Smoking", icon: "logo-no-smoking", value: smokingAllowed, setter: setSmokingAllowed },
-                                    { label: "Max 2", icon: "people", value: max2Allowed, setter: setMax2Allowed },
+                                    { label: "Pets Allowed", icon: "paw-outline", value: petsAllowed, setter: setPetsAllowed },
+                                    { label: "No Smoking", icon: "ban-outline", value: smokingAllowed, setter: setSmokingAllowed },
+                                    { label: "Max 2 Back", icon: "people-outline", value: max2Allowed, setter: setMax2Allowed },
                                 ].map((item, idx) => (
                                     <TouchableOpacity
                                         key={idx}
+                                        activeOpacity={0.8}
                                         onPress={() => item.setter(!item.value)}
-                                        style={[tw`items-center p-3 rounded-xl border w-[30%] shadow-sm`, item.value ? { backgroundColor: theme.light.primarySoft, borderColor: theme.light.primary } : tw`bg-white border-gray-200`]}
+                                        style={[
+                                            tw`flex-row items-center px-4 py-2 rounded-full`,
+                                            item.value
+                                                ? { backgroundColor: theme.light.primary }
+                                                : { backgroundColor: "#F3F4F6" }
+                                        ]}
                                     >
-                                        <Ionicons name={item.icon} size={20} color={item.value ? theme.light.primary : "gray"} />
-                                        <Text style={[tw`text-[10px] font-bold mt-1`, { color: item.value ? theme.light.primary : "gray" }]}>{item.label}</Text>
+                                        <Ionicons
+                                            name={item.icon}
+                                            size={16}
+                                            color={item.value ? "white" : "#6B7280"}
+                                            style={tw`mr-2`}
+                                        />
+                                        <Text
+                                            style={[
+                                                tw`text-sm font-medium`,
+                                                { color: item.value ? "white" : "#6B7280" }
+                                            ]}
+                                        >
+                                            {item.label}
+                                        </Text>
                                     </TouchableOpacity>
                                 ))}
                             </View>
