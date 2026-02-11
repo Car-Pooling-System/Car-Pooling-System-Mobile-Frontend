@@ -24,6 +24,7 @@ export default function Profile() {
     const [refreshing, setRefreshing] = useState(false);
     const [editMode, setEditMode] = useState(false);
     const [editedData, setEditedData] = useState({});
+    const [isNewDriver, setIsNewDriver] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [selectedImage, setSelectedImage] = useState(null);
     const [imageModalVisible, setImageModalVisible] = useState(false);
@@ -54,19 +55,84 @@ export default function Profile() {
             const response = await fetch(url);
             console.log("Response status:", response.status);
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            let data;
+            const text = await response.text();
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                console.error("Failed to parse response as JSON:", text);
+                throw new Error("Invalid server response");
             }
-            const data = await response.json();
+
+            console.log("Parsed response data:", data);
+
+            if (response.status === 404 || (data && data.message === "Driver not found")) {
+                console.log("Driver not found. Setting empty state for new driver.");
+                setIsNewDriver(true);
+                const emptyState = {
+                    userId: user.id,
+                    vehicle: { images: [] },
+                    documents: {
+                        drivingLicense: "",
+                        vehicleRegistration: "",
+                        insurance: ""
+                    },
+                    verification: {
+                        emailVerified: false,
+                        phoneVerified: false,
+                        drivingLicenseVerified: false,
+                        vehicleVerified: false,
+                    }
+                };
+                console.log("Setting empty driver data:", emptyState);
+                setDriverData(emptyState);
+                setEditedData(emptyState);
+                setEditMode(true); // Enable edit mode for new drivers
+                return;
+            }
+
+            if (!response.ok) {
+                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            }
+
             console.log("Driver data received:", data);
-            setDriverData(data);
-            setEditedData(data);
+
+            // Ensure documents and vehicle objects exist even for existing drivers
+            const processedData = {
+                ...data,
+                vehicle: data.vehicle || { images: [] },
+                documents: data.documents || {
+                    drivingLicense: "",
+                    vehicleRegistration: "",
+                    insurance: ""
+                }
+            };
+
+            setIsNewDriver(false);
+            setDriverData(processedData);
+            setEditedData(processedData);
         } catch (error) {
             console.error("Error fetching driver data:", error);
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
+    };
+
+    const ensureDriverRegistered = async () => {
+        if (!isNewDriver) return;
+
+        console.log("Registering new driver...");
+        const response = await fetch(`${BACKEND_URL}/api/driver-register/${user.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to register driver');
+        }
+        console.log("New driver registered successfully");
+        setIsNewDriver(false);
     };
 
     const handleEditToggle = () => {
@@ -80,6 +146,8 @@ export default function Profile() {
     const handleSave = async () => {
         setLoading(true);
         try {
+            await ensureDriverRegistered();
+
             const response = await fetch(`${BACKEND_URL}/api/driver-profile/${user.id}`, {
                 method: 'PUT',
                 headers: {
@@ -131,6 +199,8 @@ export default function Profile() {
                 const extension = getFileExtension(asset.uri, asset.mimeType);
                 const fileName = `profile-${Date.now()}.${extension}`;
                 const downloadURL = await uploadToStorage(blob, `profiles/${user.id}`, fileName);
+
+                await ensureDriverRegistered();
 
                 const oldImage = driverData?.profileImage;
 
@@ -300,7 +370,10 @@ export default function Profile() {
                 });
 
                 uploadedUrls = await Promise.all(uploadPromises);
-                const newImages = [...(driverData.vehicle.images || []), ...uploadedUrls];
+
+                await ensureDriverRegistered();
+
+                const newImages = [...(driverData.vehicle?.images || []), ...uploadedUrls];
 
                 const response = await fetch(`${BACKEND_URL}/api/driver-vehicle/${user.id}`, {
                     method: 'PUT',
@@ -397,6 +470,8 @@ export default function Profile() {
                 const blob = await uriToBlob(asset.uri);
                 const fileName = `${docType}-${Date.now()}.pdf`;
                 const downloadURL = await uploadToStorage(blob, `documents/${user.id}`, fileName);
+
+                await ensureDriverRegistered();
 
                 const oldDocUrl = driverData.documents?.[docType];
 
@@ -585,6 +660,10 @@ export default function Profile() {
             fetchDriverData();
         }
     }, [user?.id]);
+
+    useEffect(() => {
+        console.log("Current driverData state:", driverData);
+    }, [driverData]);
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -1027,33 +1106,29 @@ export default function Profile() {
             </View>
 
             {/* Documents */}
-            {
-                driverData?.documents && (
-                    <View style={tw`bg-white p-6 mb-6`}>
-                        <View style={tw`flex-row items-center mb-4`}>
-                            <Ionicons name="document-text" size={24} color="#000" />
-                            <Text style={tw`text-xl font-bold ml-2`}>Documents</Text>
-                        </View>
-                        <View style={tw`bg-gray-50 p-4 rounded-xl`}>
-                            <TouchableDocumentRow
-                                label="Driving License"
-                                url={driverData.documents.drivingLicense}
-                                onPress={() => handleDocumentPress('drivingLicense', driverData.documents.drivingLicense)}
-                            />
-                            <TouchableDocumentRow
-                                label="Vehicle Registration"
-                                url={driverData.documents.vehicleRegistration}
-                                onPress={() => handleDocumentPress('vehicleRegistration', driverData.documents.vehicleRegistration)}
-                            />
-                            <TouchableDocumentRow
-                                label="Insurance"
-                                url={driverData.documents.insurance}
-                                onPress={() => handleDocumentPress('insurance', driverData.documents.insurance)}
-                            />
-                        </View>
-                    </View>
-                )
-            }
+            <View style={tw`bg-white p-6 mb-6`}>
+                <View style={tw`flex-row items-center mb-4`}>
+                    <Ionicons name="document-text" size={24} color="#000" />
+                    <Text style={tw`text-xl font-bold ml-2`}>Documents</Text>
+                </View>
+                <View style={tw`bg-gray-50 p-4 rounded-xl`}>
+                    <TouchableDocumentRow
+                        label="Driving License"
+                        url={driverData?.documents?.drivingLicense}
+                        onPress={() => handleDocumentPress('drivingLicense', driverData?.documents?.drivingLicense)}
+                    />
+                    <TouchableDocumentRow
+                        label="Vehicle Registration"
+                        url={driverData?.documents?.vehicleRegistration}
+                        onPress={() => handleDocumentPress('vehicleRegistration', driverData?.documents?.vehicleRegistration)}
+                    />
+                    <TouchableDocumentRow
+                        label="Insurance"
+                        url={driverData?.documents?.insurance}
+                        onPress={() => handleDocumentPress('insurance', driverData?.documents?.insurance)}
+                    />
+                </View>
+            </View>
 
             {/* Logout Button */}
             <View style={tw`bg-white p-6 mb-6`}>
