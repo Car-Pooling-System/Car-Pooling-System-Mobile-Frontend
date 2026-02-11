@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Switch, ActivityIndicator, KeyboardAvoidingView, Platform, Dimensions, Image } from "react-native";
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Switch, ActivityIndicator, KeyboardAvoidingView, Platform, Dimensions, Image, Keyboard } from "react-native";
 import { useState, useRef, useEffect } from "react";
 import { useUser } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
@@ -109,7 +109,7 @@ export default function CreateRide() {
             // Fit map to route
             setTimeout(() => {
                 mapRef.current?.fitToCoordinates(coords, {
-                    edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+                    edgePadding: { top: 100, right: 50, bottom: 350, left: 50 },
                     animated: true,
                 });
             }, 500);
@@ -117,12 +117,18 @@ export default function CreateRide() {
         } catch (error) {
             console.error("Route Error:", error);
             Alert.alert("Error", "Failed to calculate route. Please try again.");
+            setRouteData(null); // Reset if failed
         } finally {
             setCalculatingRoute(false);
         }
     };
 
-    // Calculate Route when both locations are set
+    const handleClearRoute = () => {
+        setRouteData(null);
+        setRouteCoordinates([]);
+        // Optional: clear start/end locations if desired, currently keeping them
+    };
+
     useEffect(() => {
         if (startLocation && endLocation) {
             fetchRoute();
@@ -140,7 +146,6 @@ export default function CreateRide() {
                 longitude: location.coords.longitude,
             });
 
-            // Optional: Set initial region to user's location if no route
             if (mapRef.current && !startLocation && !endLocation) {
                 mapRef.current.animateToRegion({
                     latitude: location.coords.latitude,
@@ -223,65 +228,26 @@ export default function CreateRide() {
     };
 
     return (
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={tw`flex-1 bg-white`}>
+        <KeyboardAvoidingView
+            behavior="padding"
+            keyboardVerticalOffset={100}
+            style={tw`flex-1 bg-white`}
+        >
 
-            {/* 1. TOP SECTION: Header & Inputs (Fixed) */}
-            <View style={[tw`bg-white px-5 pt-4 pb-4 shadow-sm z-50`]}>
-                <View style={tw`flex-row items-center mb-4`}>
-                    <TouchableOpacity onPress={() => router.back()} style={tw`p-2 -ml-2 rounded-full`}>
-                        <Ionicons name="arrow-back" size={24} color="#000" />
-                    </TouchableOpacity>
-                    <Text style={tw`text-xl font-bold ml-2`}>Host a Ride</Text>
-                </View>
-
-                {/* Search Inputs with Timeline Visual */}
-                <View style={tw`flex-row`}>
-                    <View style={tw`w-8 items-center pt-3`}>
-                        <View style={tw`w-3 h-3 bg-green-500 rounded-full`} />
-                        <View style={tw`w-0.5 flex-1 bg-gray-300 my-1`} />
-                        <View style={tw`w-3 h-3 bg-red-500 rounded-sm`} />
-                    </View>
-
-                    <View style={tw`flex-1 gap-3`}>
-                        {/* Start Location (Higher Z-Index) */}
-                        <View style={{ zIndex: 100 }}>
-                            <GooglePlacesAutocomplete
-                                placeholder="Starting Point"
-                                fetchDetails={true}
-                                onPress={(data, details = null) => onPlaceSelected(data, details, "start")}
-                                query={{ key: GOOGLE_API_KEY, language: "en" }}
-                                enablePoweredByContainer={false}
-                                debounce={200}
-                                minLength={2}
-                                styles={autocompleteStyles}
-                                textInputProps={{ placeholderTextColor: "#9ca3af" }}
-                            />
-                        </View>
-
-                        {/* End Location (Lower Z-Index) */}
-                        <View style={{ zIndex: 50 }}>
-                            <GooglePlacesAutocomplete
-                                placeholder="Destination"
-                                fetchDetails={true}
-                                onPress={(data, details = null) => onPlaceSelected(data, details, "end")}
-                                query={{ key: GOOGLE_API_KEY, language: "en" }}
-                                enablePoweredByContainer={false}
-                                debounce={200}
-                                minLength={2}
-                                styles={autocompleteStyles}
-                                textInputProps={{ placeholderTextColor: "#9ca3af" }}
-                            />
-                        </View>
-                    </View>
-                </View>
+            {/* 1. Header (Floating Overlay) */}
+            <View style={[tw`absolute top-12 left-4 z-50`]}>
+                <TouchableOpacity onPress={() => router.back()} style={tw`bg-white p-2 rounded-full shadow-md`}>
+                    <Ionicons name="arrow-back" size={24} color="#000" />
+                </TouchableOpacity>
             </View>
 
-            {/* 2. MIDDLE SECTION: Map (Flexible) */}
+            {/* 2. Map (Flex Middle) */}
             <View style={tw`flex-1 relative z-0`}>
                 <MapView
                     ref={mapRef}
                     provider={PROVIDER_GOOGLE}
                     style={tw`flex-1`}
+                    onPress={() => Keyboard.dismiss()}
                     initialRegion={{
                         latitude: 12.9716, longitude: 77.5946,
                         latitudeDelta: 0.05, longitudeDelta: 0.05,
@@ -309,113 +275,161 @@ export default function CreateRide() {
                 )}
             </View>
 
-            {/* 3. BOTTOM SECTION: Details (Visible when route is set) */}
-            {routeData && (
-                <View style={[tw`bg-white rounded-t-3xl shadow-[0_-5px_15px_rgba(0,0,0,0.1)] border-t border-gray-100 absolute bottom-0 left-0 right-0 z-50`, { maxHeight: '50%' }]}>
-                    <ScrollView contentContainerStyle={tw`p-6 pb-12`}>
-                        {/* Summary */}
-                        <View style={tw`flex-row justify-between items-center mb-6`}>
-                            <View>
-                                <Text style={tw`text-gray-500 text-xs font-bold`}>TOTAL DISTANCE</Text>
-                                <Text style={tw`text-xl font-bold text-gray-900`}>{routeData.metrics.totalDistanceKm.toFixed(1)} km</Text>
+            {/* 3. Bottom Section: Conditional Rendering (Inputs or Details) */}
+            <View style={[tw`bg-white rounded-t-3xl shadow-xl w-full z-10`, { minHeight: 200 }]}>
+                {!routeData ? (
+                    /* Search Inputs */
+                    <View style={tw`p-5 pt-8 pb-10`}>
+                        <Text style={tw`text-lg font-bold mb-4 text-gray-800`}>Where are you going?</Text>
+                        <View style={tw`flex-row`}>
+                            <View style={tw`w-8 items-center pt-3`}>
+                                <View style={tw`w-3 h-3 bg-green-500 rounded-full`} />
+                                <View style={tw`w-0.5 flex-1 bg-gray-300 my-1`} />
+                                <View style={tw`w-3 h-3 bg-red-500 rounded-sm`} />
                             </View>
-                            <View style={tw`items-end`}>
-                                <Text style={tw`text-gray-500 text-xs font-bold`}>EST. DURATION</Text>
-                                <Text style={tw`text-xl font-bold text-gray-900`}>{Math.round(routeData.metrics.durationMinutes)} min</Text>
+
+                            <View style={tw`flex-1 gap-3`}>
+                                <View style={{ zIndex: 100 }}>
+                                    <GooglePlacesAutocomplete
+                                        placeholder="Starting Point"
+                                        fetchDetails={true}
+                                        onPress={(data, details = null) => onPlaceSelected(data, details, "start")}
+                                        query={{ key: GOOGLE_API_KEY, language: "en" }}
+                                        enablePoweredByContainer={false}
+                                        debounce={200}
+                                        minLength={2}
+                                        styles={autocompleteStyles}
+                                        textInputProps={{ placeholderTextColor: "#9ca3af" }}
+                                    />
+                                </View>
+                                <View style={{ zIndex: 50 }}>
+                                    <GooglePlacesAutocomplete
+                                        placeholder="Destination"
+                                        fetchDetails={true}
+                                        onPress={(data, details = null) => onPlaceSelected(data, details, "end")}
+                                        query={{ key: GOOGLE_API_KEY, language: "en" }}
+                                        enablePoweredByContainer={false}
+                                        debounce={200}
+                                        minLength={2}
+                                        styles={autocompleteStyles}
+                                        textInputProps={{ placeholderTextColor: "#9ca3af" }}
+                                    />
+                                </View>
                             </View>
                         </View>
-
-                        {/* Date & Time */}
-                        <View style={tw`flex-row gap-3 mb-6`}>
-                            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={tw`flex-1 bg-gray-50 p-3 rounded-xl border border-gray-200 flex-row items-center justify-center`}>
-                                <Ionicons name="calendar-outline" size={18} color="gray" style={tw`mr-2`} />
-                                <Text style={tw`font-semibold text-gray-900`}>{date.toLocaleDateString()}</Text>
+                    </View>
+                ) : (
+                    /* Ride Details Sheet */
+                    <View style={{ maxHeight: Dimensions.get('window').height * 0.6 }}>
+                        <View style={tw`h-1 w-12 bg-gray-300 rounded-full self-center mt-3 mb-2`} />
+                        <View style={tw`flex-row justify-between items-center px-6 pb-2`}>
+                            <Text style={tw`text-lg font-bold text-gray-800`}>Ride Details</Text>
+                            <TouchableOpacity onPress={handleClearRoute} style={tw`bg-gray-100 p-2 rounded-full`}>
+                                <Ionicons name="close" size={20} color="gray" />
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => setShowTimePicker(true)} style={tw`flex-1 bg-gray-50 p-3 rounded-xl border border-gray-200 flex-row items-center justify-center`}>
-                                <Ionicons name="time-outline" size={18} color="gray" style={tw`mr-2`} />
-                                <Text style={tw`font-semibold text-gray-900`}>{date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-                            </TouchableOpacity>
                         </View>
 
-                        {/* Pickers Logic */}
-                        {showDatePicker && (
-                            <DateTimePicker
-                                value={date}
-                                mode="date"
-                                onChange={(event, selectedDate) => {
-                                    setShowDatePicker(false);
-                                    if (selectedDate) {
-                                        const newDate = new Date(date);
-                                        newDate.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-                                        setDate(newDate);
-                                    }
-                                }}
-                            />
-                        )}
-                        {showTimePicker && (
-                            <DateTimePicker
-                                value={date}
-                                mode="time"
-                                onChange={(event, selectedDate) => {
-                                    setShowTimePicker(false);
-                                    if (selectedDate) {
-                                        const newDate = new Date(date);
-                                        newDate.setHours(selectedDate.getHours(), selectedDate.getMinutes());
-                                        setDate(newDate);
-                                    }
-                                }}
-                            />
-                        )}
-
-                        {/* Pricing */}
-                        <View style={tw`bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6 gap-2`}>
-                            <View style={tw`flex-row justify-between`}>
-                                <Text style={tw`text-gray-500`}>Base Price (Rec.)</Text>
-                                <Text style={tw`font-semibold`}>₹{recommendedFare}</Text>
+                        <ScrollView contentContainerStyle={tw`p-6 pt-0 pb-12`}>
+                            {/* Summary */}
+                            <View style={tw`bg-gray-50 p-4 rounded-xl mb-6 border border-gray-100`}>
+                                <View style={tw`flex-row justify-between items-center`}>
+                                    <View>
+                                        <Text style={tw`text-gray-500 text-xs font-bold`}>DISTANCE</Text>
+                                        <Text style={tw`text-lg font-bold text-gray-900`}>{routeData.metrics.totalDistanceKm.toFixed(1)} km</Text>
+                                    </View>
+                                    <View style={tw`items-end`}>
+                                        <Text style={tw`text-gray-500 text-xs font-bold`}>DURATION</Text>
+                                        <Text style={tw`text-lg font-bold text-gray-900`}>{Math.round(routeData.metrics.durationMinutes)} min</Text>
+                                    </View>
+                                </View>
                             </View>
-                            <View style={tw`flex-row items-center border-t border-gray-200 pt-2`}>
-                                <TextInput
-                                    value={extraFare}
-                                    onChangeText={setExtraFare}
-                                    placeholder="+ Extra Amount"
-                                    keyboardType="numeric"
-                                    style={tw`flex-1 text-base font-medium text-gray-900 h-10`}
-                                />
-                                <Text style={tw`font-bold text-green-700 text-lg`}>
-                                    Total: ₹{recommendedFare + (Number(extraFare) || 0)}
-                                </Text>
-                            </View>
-                        </View>
 
-                        {/* Preferences */}
-                        <View style={tw`flex-row justify-between mb-8`}>
-                            {[
-                                { label: "Pets", icon: "paw", value: petsAllowed, setter: setPetsAllowed },
-                                { label: "Smoking", icon: "logo-no-smoking", value: smokingAllowed, setter: setSmokingAllowed },
-                                { label: "Max 2", icon: "people", value: max2Allowed, setter: setMax2Allowed },
-                            ].map((item, idx) => (
-                                <TouchableOpacity
-                                    key={idx}
-                                    onPress={() => item.setter(!item.value)}
-                                    style={[tw`items-center p-3 rounded-xl border w-[30%]`, item.value ? { backgroundColor: theme.light.primarySoft, borderColor: theme.light.primary } : tw`bg-gray-50 border-gray-100`]}
-                                >
-                                    <Ionicons name={item.icon} size={20} color={item.value ? theme.light.primary : "gray"} />
-                                    <Text style={[tw`text-[10px] font-bold mt-1`, { color: item.value ? theme.light.primary : "gray" }]}>{item.label}</Text>
+                            {/* Date & Time */}
+                            <Text style={tw`text-xs font-bold text-gray-400 mb-2 uppercase`}>Departure Time</Text>
+                            <View style={tw`flex-row gap-3 mb-6`}>
+                                <TouchableOpacity onPress={() => setShowDatePicker(true)} style={tw`flex-1 bg-white p-3 rounded-xl border border-gray-200 flex-row items-center justify-center shadow-sm`}>
+                                    <Ionicons name="calendar-outline" size={18} color="gray" style={tw`mr-2`} />
+                                    <Text style={tw`font-semibold text-gray-900`}>{date.toLocaleDateString()}</Text>
                                 </TouchableOpacity>
-                            ))}
-                        </View>
+                                <TouchableOpacity onPress={() => setShowTimePicker(true)} style={tw`flex-1 bg-white p-3 rounded-xl border border-gray-200 flex-row items-center justify-center shadow-sm`}>
+                                    <Ionicons name="time-outline" size={18} color="gray" style={tw`mr-2`} />
+                                    <Text style={tw`font-semibold text-gray-900`}>{date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                                </TouchableOpacity>
+                            </View>
 
-                        {/* Submit */}
-                        <TouchableOpacity
-                            onPress={handlePublish}
-                            disabled={isPublishing}
-                            style={[tw`py-4 rounded-xl items-center shadow-lg`, { backgroundColor: theme.light.primary }, isPublishing && tw`opacity-70`]}
-                        >
-                            {isPublishing ? <ActivityIndicator color="white" /> : <Text style={tw`text-white font-bold text-lg`}>Publish Ride</Text>}
-                        </TouchableOpacity>
-                    </ScrollView>
-                </View>
-            )}
+                            {/* Pickers Logic */}
+                            {showDatePicker && (
+                                <DateTimePicker
+                                    value={date}
+                                    mode="date"
+                                    onChange={(event, selectedDate) => {
+                                        setShowDatePicker(false);
+                                        if (selectedDate) setDate(prev => { const d = new Date(prev); d.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()); return d; });
+                                    }}
+                                />
+                            )}
+                            {showTimePicker && (
+                                <DateTimePicker
+                                    value={date}
+                                    mode="time"
+                                    onChange={(event, selectedDate) => {
+                                        setShowTimePicker(false);
+                                        if (selectedDate) setDate(prev => { const d = new Date(prev); d.setHours(selectedDate.getHours(), selectedDate.getMinutes()); return d; });
+                                    }}
+                                />
+                            )}
+
+                            {/* Pricing */}
+                            <View style={tw`bg-white p-4 rounded-xl border border-gray-200 mb-6 gap-2 shadow-sm`}>
+                                <View style={tw`flex-row justify-between`}>
+                                    <Text style={tw`text-gray-600`}>Base Price (Rec.)</Text>
+                                    <Text style={tw`font-semibold`}>₹{recommendedFare}</Text>
+                                </View>
+                                <View style={tw`flex-row items-center border-t border-gray-100 pt-2`}>
+                                    <TextInput
+                                        value={extraFare}
+                                        onChangeText={setExtraFare}
+                                        placeholder="+ Extra Amount"
+                                        keyboardType="numeric"
+                                        style={tw`flex-1 text-base font-medium text-gray-900 h-10`}
+                                    />
+                                    <Text style={tw`font-bold text-green-700 text-lg`}>
+                                        Total: ₹{recommendedFare + (Number(extraFare) || 0)}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            {/* Preferences */}
+                            <Text style={tw`text-xs font-bold text-gray-400 mb-2 uppercase`}>Preferences</Text>
+                            <View style={tw`flex-row justify-between mb-8`}>
+                                {[
+                                    { label: "Pets", icon: "paw", value: petsAllowed, setter: setPetsAllowed },
+                                    { label: "Smoking", icon: "logo-no-smoking", value: smokingAllowed, setter: setSmokingAllowed },
+                                    { label: "Max 2", icon: "people", value: max2Allowed, setter: setMax2Allowed },
+                                ].map((item, idx) => (
+                                    <TouchableOpacity
+                                        key={idx}
+                                        onPress={() => item.setter(!item.value)}
+                                        style={[tw`items-center p-3 rounded-xl border w-[30%] shadow-sm`, item.value ? { backgroundColor: theme.light.primarySoft, borderColor: theme.light.primary } : tw`bg-white border-gray-200`]}
+                                    >
+                                        <Ionicons name={item.icon} size={20} color={item.value ? theme.light.primary : "gray"} />
+                                        <Text style={[tw`text-[10px] font-bold mt-1`, { color: item.value ? theme.light.primary : "gray" }]}>{item.label}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* Submit */}
+                            <TouchableOpacity
+                                onPress={handlePublish}
+                                disabled={isPublishing}
+                                style={[tw`py-4 rounded-xl items-center shadow-lg`, { backgroundColor: theme.light.primary }, isPublishing && tw`opacity-70`]}
+                            >
+                                {isPublishing ? <ActivityIndicator color="white" /> : <Text style={tw`text-white font-bold text-lg`}>Publish Ride</Text>}
+                            </TouchableOpacity>
+                        </ScrollView>
+                    </View>
+                )}
+            </View>
         </KeyboardAvoidingView>
     );
 }
