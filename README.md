@@ -1,8 +1,8 @@
-# 📱 Car Pooling Mobile Frontend
+# Car Pooling Mobile Frontend
 
 Welcome to the mobile frontend for the Car Pooling System. This application is built with **React Native** and **Expo**, providing a premium interface for both drivers and riders.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Core Technical Logic](#core-technical-logic)
   - [Geospatial Indexing (Grid System)](#geospatial-indexing-grid-system)
@@ -13,7 +13,7 @@ Welcome to the mobile frontend for the Car Pooling System. This application is b
 
 ---
 
-## 🔬 Core Technical Logic
+## Core Technical Logic
 
 ### Geospatial Indexing (Grid System)
 
@@ -83,7 +83,7 @@ If this intersection is non-empty, the system returns a `409 Conflict` error to 
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Framework**: Expo / React Native
 - **Styling**: Nativewind / Tailwind CSS
@@ -93,7 +93,7 @@ If this intersection is non-empty, the system returns a `409 Conflict` error to 
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 app/
