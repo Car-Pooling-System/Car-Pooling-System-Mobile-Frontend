@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "lint": "eslint .",
+    "test": "jest"
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.20",
@@ -38,7 +40,13 @@
   },
   "private": true,
   "devDependencies": {
+    "@testing-library/react-native": "^13.3.3",
     "@types/react": "~19.1.10",
+    "eslint": "^10.0.0",
+    "eslint-config-expo": "^10.0.0",
+    "jest": "^30.2.0",
+    "jest-expo": "^54.0.17",
+    "react-test-renderer": "^19.2.4",
     "typescript": "~5.9.2"
   }
 }
