@@ -22,44 +22,21 @@ export default function SignIn() {
     const redirectUrl = AuthSession.makeRedirectUri();
 
     useEffect(() => {
-        const setupDriver = async () => {
+        const handleSignedIn = async () => {
             if (isSignedIn && user) {
-                try {
-                    setLoading(true);
-                    // 1. Assign Role if missing
-                    if (user.unsafeMetadata?.role !== "driver") {
-                        await user.update({
-                            unsafeMetadata: {
-                                role: "driver",
-                            },
-                        });
-                    }
-
-                    // 2. Register Driver in Backend
-                    console.log("Registering driver at:", `${BACKEND_URL}/api/driver-register/${user.id}`);
-                    const response = await fetch(`${BACKEND_URL}/api/driver-register/${user.id}`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                    });
-
-                    if (!response.ok) {
-                        console.error("Driver registration failed:", response.status);
-                    } else {
-                        console.log("Driver registered successfully");
-                    }
-
-                    // 3. Redirect to Driver Home
-                    router.replace("/(app)/hosting");
-                } catch (error) {
-                    console.error("Error setting up driver:", error);
-                    Alert.alert("Error", "Failed to setup driver account.");
-                } finally {
-                    setLoading(false);
+                const role = user.unsafeMetadata?.role;
+                if (!role) {
+                    // New user — let them pick a role
+                    router.replace("/(auth)/role-select");
+                } else if (role === "driver") {
+                    router.replace("/(app)/my-rides");
+                } else if (role === "rider") {
+                    router.replace("/(rider)/search");
                 }
             }
         };
 
-        setupDriver();
+        handleSignedIn();
     }, [isSignedIn, user]);
 
     const handleOAuth = useCallback(async (strategy) => {
