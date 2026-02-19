@@ -1,18 +1,28 @@
-import { View, Text, FlatList, TouchableOpacity, Image, ActivityIndicator, RefreshControl, useColorScheme, TextInput, ScrollView } from "react-native";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { View, Text, FlatList, TouchableOpacity, Image, ActivityIndicator, RefreshControl, useColorScheme, TextInput, ScrollView, Animated, PanResponder } from "react-native";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useUser } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import tw from "twrnc";
 import { theme } from "../../../constants/Colors";
+import { Audio } from "expo-av";
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 export default function MyRides() {
-    const { user } = useUser();
+    const { user, isLoaded } = useUser();
     const router = useRouter();
     const scheme = useColorScheme();
     const colors = theme[scheme ?? "light"];
+
+    const [welcomeVisible, setWelcomeVisible] = useState(false);
+    const [welcomeText, setWelcomeText] = useState("");
+    const welcomeShownRef = useRef(false);
+    const welcomeTimerRef = useRef(null);
+    const welcomeSoundRef = useRef(null);
+    const welcomeTranslateY = useRef(new Animated.Value(-20)).current;
+    const welcomeOpacity = useRef(new Animated.Value(0)).current;
+    const welcomePanY = useRef(new Animated.Value(0)).current;
 
     const isDriverRole = user?.unsafeMetadata?.role === "driver";
     const [activeTab, setActiveTab] = useState(isDriverRole ? "driver" : "rider");
@@ -23,6 +33,114 @@ export default function MyRides() {
     const [rides, setRides] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+
+    const hideWelcome = useCallback(() => {
+        Animated.parallel([
+            Animated.timing(welcomeOpacity, {
+                toValue: 0,
+                duration: 180,
+                useNativeDriver: false,
+            }),
+            Animated.timing(welcomeTranslateY, {
+                toValue: -20,
+                duration: 180,
+                useNativeDriver: false,
+            }),
+        ]).start(() => {
+            setWelcomeVisible(false);
+            welcomePanY.setValue(0);
+        });
+    }, [welcomeOpacity, welcomePanY, welcomeTranslateY]);
+
+    const playWelcomeSound = useCallback(async () => {
+        try {
+            if (welcomeSoundRef.current) {
+                await welcomeSoundRef.current.stopAsync();
+                await welcomeSoundRef.current.unloadAsync();
+            }
+            const { sound } = await Audio.Sound.createAsync(
+                require("../../../assets/car-sound.mp3"),
+                { shouldPlay: true }
+            );
+            welcomeSoundRef.current = sound;
+        } catch (error) {
+            console.error("Failed to play welcome sound:", error);
+        }
+    }, []);
+
+    const showWelcome = useCallback((text) => {
+        setWelcomeText(text);
+        setWelcomeVisible(true);
+        welcomeOpacity.setValue(0);
+        welcomeTranslateY.setValue(-20);
+        Animated.parallel([
+            Animated.timing(welcomeOpacity, {
+                toValue: 1,
+                duration: 220,
+                useNativeDriver: false,
+            }),
+            Animated.timing(welcomeTranslateY, {
+                toValue: 0,
+                duration: 220,
+                useNativeDriver: false,
+            }),
+        ]).start();
+
+        if (welcomeTimerRef.current) {
+            clearTimeout(welcomeTimerRef.current);
+        }
+        welcomeTimerRef.current = setTimeout(() => {
+            hideWelcome();
+        }, 3000);
+        playWelcomeSound();
+    }, [hideWelcome, playWelcomeSound, welcomeOpacity, welcomeTranslateY]);
+
+    useEffect(() => {
+        return () => {
+            if (welcomeTimerRef.current) {
+                clearTimeout(welcomeTimerRef.current);
+            }
+            if (welcomeSoundRef.current) {
+                welcomeSoundRef.current.unloadAsync().catch(() => {});
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isLoaded || !user || welcomeShownRef.current) return;
+        welcomeShownRef.current = true;
+
+        const fullName = user.fullName || user.firstName || "there";
+        const hasWelcomed = Boolean(user.unsafeMetadata?.hasWelcomed);
+
+        if (!hasWelcomed) {
+            showWelcome(`Hello ${fullName}`);
+            user
+                .update({
+                    unsafeMetadata: {
+                        ...user.unsafeMetadata,
+                        hasWelcomed: true,
+                    },
+                })
+                .catch((error) => console.error("Failed to set welcome flag:", error));
+        } else {
+            showWelcome(`Welcome back ${fullName}`);
+        }
+    }, [isLoaded, user, showWelcome]);
+
+    const welcomePanResponder = useRef(
+        PanResponder.create({
+            onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 6,
+            onPanResponderMove: Animated.event([null, { dy: welcomePanY }], { useNativeDriver: false }),
+            onPanResponderRelease: (_, gesture) => {
+                if (Math.abs(gesture.dy) > 30) {
+                    hideWelcome();
+                } else {
+                    Animated.spring(welcomePanY, { toValue: 0, useNativeDriver: false }).start();
+                }
+            },
+        })
+    ).current;
 
     const fetchRides = useCallback(async () => {
         if (!user?.id) return;
@@ -180,6 +298,38 @@ export default function MyRides() {
 
     return (
         <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
+            {welcomeVisible && (
+                <Animated.View
+                    {...welcomePanResponder.panHandlers}
+                    style={[
+                        tw`absolute left-4 right-4 z-20 rounded-2xl px-4 py-3`,
+                        {
+                            top: 12,
+                            backgroundColor: colors.primary,
+                            shadowColor: "#000",
+                            shadowOffset: { width: 0, height: 6 },
+                            shadowOpacity: 0.2,
+                            shadowRadius: 10,
+                            elevation: 6,
+                            opacity: welcomeOpacity,
+                            transform: [
+                                { translateY: Animated.add(welcomeTranslateY, welcomePanY) },
+                            ],
+                        },
+                    ]}
+                >
+                    <View style={tw`flex-row items-center`}>
+                        <Image
+                            source={require("../../../assets/icon.png")}
+                            style={tw`w-8 h-8 rounded mr-3`}
+                        />
+                        <View style={tw`flex-1`}>
+                            <Text style={[tw`text-white font-bold text-base`]}>{welcomeText}</Text>
+                            <Text style={[tw`text-xs mt-1`, { color: "rgba(255,255,255,0.8)" }]}>Swipe to dismiss</Text>
+                        </View>
+                    </View>
+                </Animated.View>
+            )}
             {/* Header */}
             <View style={[tw`pt-4 pb-4 px-6 bg-white border-b`, { borderColor: colors.border }]}>
                 <View style={tw`flex-row justify-between items-center mb-4`}>

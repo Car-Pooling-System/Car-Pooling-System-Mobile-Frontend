@@ -927,9 +927,13 @@ export default function Profile() {
                                     style: "destructive",
                                     onPress: async () => {
                                         try {
+                                            setLoading(true);
                                             await signOut();
+                                            router.replace("/(auth)/sign-in");
                                         } catch (error) {
                                             console.error("Error signing out:", error);
+                                        } finally {
+                                            setLoading(false);
                                         }
                                     }
                                 }

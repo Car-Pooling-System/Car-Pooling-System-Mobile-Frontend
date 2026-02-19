@@ -17,6 +17,7 @@
     "dotenv": "^17.2.4",
     "expo": "~54.0.32",
     "expo-auth-session": "~7.0.10",
+    "expo-av": "^16.0.8",
     "expo-constants": "~18.0.13",
     "expo-document-picker": "^14.0.8",
     "expo-image-picker": "~17.0.10",

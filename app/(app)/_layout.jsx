@@ -8,11 +8,12 @@ import { Redirect } from "expo-router";
 export default function TabsLayout() {
     const { user } = useUser();
     const { isSignedIn } = useAuth();
-    if (!isSignedIn) {
-        return <Redirect href={"/(auth)/sign-in"} />
-    }
     const scheme = useColorScheme();
     const colors = theme[scheme ?? "light"];
+
+    if (!isSignedIn) {
+        return <Redirect href={"/(auth)/sign-in"} />;
+    }
 
     return (
         <Tabs
