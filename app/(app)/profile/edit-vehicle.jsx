@@ -17,6 +17,8 @@ export default function EditVehicle() {
 
     // Parse the vehicle data from params
     const vehicleData = params.vehicle ? JSON.parse(params.vehicle) : {};
+    const mode = params.mode || "edit"; // "add" or "edit"
+    const vehicleIndex = params.vehicleIndex !== undefined ? parseInt(params.vehicleIndex) : null;
 
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -110,33 +112,51 @@ export default function EditVehicle() {
 
         setLoading(true);
         try {
-            const response = await fetch(`${BACKEND_URL}/api/driver-vehicle/${user.id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    vehicle: formData
-                })
-            });
+            if (mode === "add") {
+                // Adding a new vehicle
+                const response = await fetch(`${BACKEND_URL}/api/driver-vehicles/${user.id}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
 
-            if (!response.ok) {
-                throw new Error('Failed to update vehicle');
+                if (!response.ok) {
+                    throw new Error('Failed to add vehicle');
+                }
+
+                Alert.alert("Success", "Vehicle added successfully", [
+                    { text: "OK", onPress: () => router.back() }
+                ]);
+            } else {
+                // Editing an existing vehicle
+                const response = await fetch(`${BACKEND_URL}/api/driver-vehicles/${user.id}/${vehicleIndex}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update vehicle');
+                }
+
+                // Delete old images from storage if they were replaced
+                const oldImages = vehicleData.images || [];
+                const removedImages = oldImages.filter(img => !formData.images.includes(img));
+                if (removedImages.length > 0) {
+                    await deleteMultipleFromStorage(removedImages);
+                }
+
+                Alert.alert("Success", "Vehicle updated successfully", [
+                    { text: "OK", onPress: () => router.back() }
+                ]);
             }
-
-            // Delete old images from storage if they were replaced
-            const oldImages = vehicleData.images || [];
-            const removedImages = oldImages.filter(img => !formData.images.includes(img));
-            if (removedImages.length > 0) {
-                await deleteMultipleFromStorage(removedImages);
-            }
-
-            Alert.alert("Success", "Vehicle details updated successfully", [
-                { text: "OK", onPress: () => router.back() }
-            ]);
         } catch (error) {
-            console.error("Error updating vehicle:", error);
-            Alert.alert("Error", "Failed to update vehicle details");
+            console.error("Error saving vehicle:", error);
+            Alert.alert("Error", mode === "add" ? "Failed to add vehicle" : "Failed to update vehicle");
         } finally {
             setLoading(false);
         }
@@ -145,12 +165,14 @@ export default function EditVehicle() {
     return (
         <View style={tw`flex-1 bg-gray-50`}>
             {/* Header */}
-            <View style={tw`bg-white px-4 pt-12 pb-4 shadow-sm`}>
+            <View style={tw`bg-white px-4 pt-6 pb-4 shadow-sm`}>
                 <View style={tw`flex-row items-center`}>
                     <TouchableOpacity onPress={() => router.back()} style={tw`mr-4`}>
                         <Ionicons name="arrow-back" size={24} color="#000" />
                     </TouchableOpacity>
-                    <Text style={tw`text-xl font-bold flex-1`}>Edit Vehicle Details</Text>
+                    <Text style={tw`text-xl font-bold flex-1`}>
+                        {mode === "add" ? "Add Vehicle" : "Edit Vehicle"}
+                    </Text>
                     <TouchableOpacity onPress={handleSave} disabled={loading}>
                         {loading ? (
                             <ActivityIndicator size="small" color="#007AFF" />

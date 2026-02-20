@@ -71,7 +71,7 @@ export default function Profile() {
                 setIsNewDriver(true);
                 const emptyState = {
                     userId: user.id,
-                    vehicle: { images: [] },
+                    vehicles: [],
                     documents: {
                         drivingLicense: "",
                         vehicleRegistration: "",
@@ -97,10 +97,10 @@ export default function Profile() {
 
             console.log("Driver data received:", data);
 
-            // Ensure documents and vehicle objects exist even for existing drivers
+            // Ensure documents and vehicles array exist
             const processedData = {
                 ...data,
-                vehicle: data.vehicle || { images: [] },
+                vehicles: data.vehicles || [],
                 documents: data.documents || {
                     drivingLicense: "",
                     vehicleRegistration: "",
@@ -235,184 +235,6 @@ export default function Profile() {
         } catch (error) {
             console.error("Error updating profile image:", error);
             Alert.alert("Error", "Failed to update profile image");
-            setUploading(false);
-        }
-    };
-
-    const handleVehicleImagePress = (image, index) => {
-        Alert.alert(
-            "Vehicle Image",
-            "What would you like to do?",
-            [
-                {
-                    text: "View Full Size",
-                    onPress: () => {
-                        setSelectedImage(image);
-                        setImageModalVisible(true);
-                    }
-                },
-                {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: () => handleDeleteVehicleImage(index)
-                },
-                {
-                    text: "Cancel",
-                    style: "cancel"
-                }
-            ]
-        );
-    };
-
-    const handleDeleteVehicleImage = async (index) => {
-        Alert.alert(
-            "Delete Image",
-            "Are you sure you want to delete this image?",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: async () => {
-                        setUploading(true);
-                        try {
-                            const imageUrl = driverData.vehicle.images[index];
-                            const newImages = driverData.vehicle.images.filter((_, i) => i !== index);
-
-                            // Update database FIRST
-                            const response = await fetch(`${BACKEND_URL}/api/driver-vehicle/${user.id}`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    images: newImages
-                                })
-                            });
-
-                            if (!response.ok) {
-                                const errorText = await response.text();
-                                console.error('Backend error:', errorText);
-                                throw new Error(`Failed to update backend: ${response.status}`);
-                            }
-
-                            // Only delete from Firebase after DB update succeeds
-                            try {
-                                await deleteFromStorage(imageUrl);
-                            } catch (storageError) {
-                                console.error('Storage deletion error (non-critical):', storageError);
-                                // Don't fail the whole operation if storage deletion fails
-                            }
-
-                            // Update local state immediately
-                            setDriverData(prev => ({
-                                ...prev,
-                                vehicle: { ...prev.vehicle, images: newImages }
-                            }));
-                            setEditedData(prev => ({
-                                ...prev,
-                                vehicle: { ...prev.vehicle, images: newImages }
-                            }));
-                            Alert.alert("Success", "Image deleted!");
-                        } catch (error) {
-                            console.error("Error deleting image:", error);
-                            Alert.alert("Error", "Failed to delete image");
-                        } finally {
-                            setUploading(false);
-                        }
-                    }
-                }
-            ]
-        );
-    };
-
-    const handleAddVehicleImages = async () => {
-        let uploadedUrls = [];
-        try {
-            if (!BACKEND_URL) {
-                Alert.alert("Configuration Error", "Backend URL is not configured.");
-                return;
-            }
-
-            const currentImageCount = driverData?.vehicle?.images?.length || 0;
-            const remainingSlots = 4 - currentImageCount;
-
-            if (remainingSlots <= 0) {
-                Alert.alert("Limit Reached", "Maximum 4 vehicle images allowed. Please delete an image before adding more.");
-                return;
-            }
-
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-            if (status !== 'granted') {
-                Alert.alert('Permission needed', 'Please grant camera roll permissions');
-                return;
-            }
-
-            const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsMultipleSelection: true,
-                quality: 0.8,
-            });
-
-            if (!result.canceled && result.assets && result.assets.length > 0) {
-                // Limit selection to remaining slots
-                const assetsToUpload = result.assets.slice(0, remainingSlots);
-
-                if (result.assets.length > remainingSlots) {
-                    Alert.alert("Notice", `Only ${remainingSlots} image(s) will be uploaded to maintain the 4-image limit.`);
-                }
-
-                setUploading(true);
-                const uploadPromises = assetsToUpload.map(async (asset) => {
-                    const blob = await uriToBlob(asset.uri);
-                    const extension = getFileExtension(asset.uri, asset.mimeType);
-                    const fileName = `vehicle-${Date.now()}-${Math.random()}.${extension}`;
-                    return await uploadToStorage(blob, `vehicles/${user.id}`, fileName);
-                });
-
-                uploadedUrls = await Promise.all(uploadPromises);
-
-                await ensureDriverRegistered();
-
-                const newImages = [...(driverData.vehicle?.images || []), ...uploadedUrls];
-
-                const response = await fetch(`${BACKEND_URL}/api/driver-vehicle/${user.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        images: newImages
-                    })
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Failed to update backend: ${response.status} ${errorText}`);
-                }
-
-                // Update local state
-                setDriverData(prev => ({
-                    ...prev,
-                    vehicle: { ...prev.vehicle, images: newImages }
-                }));
-                setEditedData(prev => ({
-                    ...prev,
-                    vehicle: { ...prev.vehicle, images: newImages }
-                }));
-                Alert.alert("Success", "Images uploaded!");
-                setUploading(false);
-            }
-        } catch (error) {
-            console.error("Error uploading images:", error);
-
-            // Roll back newly uploaded storage files if DB update fails (including network failures).
-            if (uploadedUrls.length > 0) {
-                await deleteMultipleFromStorage(uploadedUrls);
-            }
-
-            if (error?.message?.includes("Network request failed")) {
-                Alert.alert("Network Error", "Could not reach backend. Check server status and EXPO_PUBLIC_BACKEND_URL.");
-            } else {
-                Alert.alert("Error", "Failed to upload images");
-            }
             setUploading(false);
         }
     };
@@ -966,118 +788,76 @@ export default function Profile() {
             </View>
 
             {/* Vehicle Information */}
-            {
-                driverData?.vehicle && (
-                    <View style={tw`bg-white p-6 mb-3`}>
-                        <View style={tw`flex-row items-center mb-4`}>
-                            <Ionicons name="car-sport" size={24} color="#000" />
-                            <Text style={tw`text-xl font-bold ml-2`}>Vehicle Information</Text>
-                        </View>
-                        <View style={tw`bg-gray-50 p-4 rounded-xl`}>
-                            {editMode ? (
-                                <>
-                                    <EditableField
-                                        label="Brand"
-                                        value={editedData.vehicle?.brand || ''}
-                                        onChangeText={(text) => setEditedData({
-                                            ...editedData,
-                                            vehicle: { ...editedData.vehicle, brand: text }
-                                        })}
-                                    />
-                                    <EditableField
-                                        label="Model"
-                                        value={editedData.vehicle?.model || ''}
-                                        onChangeText={(text) => setEditedData({
-                                            ...editedData,
-                                            vehicle: { ...editedData.vehicle, model: text }
-                                        })}
-                                    />
-                                    <EditableField
-                                        label="Year"
-                                        value={editedData.vehicle?.year || ''}
-                                        onChangeText={(text) => setEditedData({
-                                            ...editedData,
-                                            vehicle: { ...editedData.vehicle, year: text }
-                                        })}
-                                        keyboardType="numeric"
-                                    />
-                                    <EditableField
-                                        label="Color"
-                                        value={editedData.vehicle?.color || ''}
-                                        onChangeText={(text) => setEditedData({
-                                            ...editedData,
-                                            vehicle: { ...editedData.vehicle, color: text }
-                                        })}
-                                    />
-                                    <EditableField
-                                        label="License Plate"
-                                        value={editedData.vehicle?.licensePlate || ''}
-                                        onChangeText={(text) => setEditedData({
-                                            ...editedData,
-                                            vehicle: { ...editedData.vehicle, licensePlate: text.toUpperCase() }
-                                        })}
-                                        autoCapitalize="characters"
-                                    />
-                                </>
-                            ) : (
-                                <>
-                                    <InfoRow label="Brand" value={driverData.vehicle.brand} />
-                                    <InfoRow label="Model" value={driverData.vehicle.model} />
-                                    <InfoRow label="Year" value={driverData.vehicle.year} />
-                                    <InfoRow label="Color" value={driverData.vehicle.color} />
-                                    <InfoRow label="License Plate" value={driverData.vehicle.licensePlate} />
-                                </>
-                            )}
-                        </View>
-                        {driverData.vehicle.images?.length > 0 && (
-                            <View style={tw`mt-4`}>
-                                <View style={tw`flex-row items-center justify-between mb-2`}>
-                                    <Text style={tw`font-semibold`}>Vehicle Images ({driverData.vehicle.images.length}/4)</Text>
-                                    {driverData.vehicle.images.length < 4 && (
-                                        <TouchableOpacity
-                                            onPress={handleAddVehicleImages}
-                                            disabled={uploading}
-                                            style={tw`bg-blue-500 px-3 py-1 rounded-lg flex-row items-center`}
-                                        >
-                                            <Ionicons name="add" size={16} color="white" />
-                                            <Text style={tw`text-white text-sm font-semibold ml-1`}>Add</Text>
-                                        </TouchableOpacity>
-                                    )}
-                                    {driverData.vehicle.images.length >= 4 && (
-                                        <View style={tw`bg-gray-300 px-3 py-1 rounded-lg`}>
-                                            <Text style={tw`text-gray-600 text-sm font-semibold`}>Limit Reached</Text>
-                                        </View>
-                                    )}
-                                </View>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                    {driverData.vehicle.images.map((img, i) => (
-                                        <TouchableOpacity
-                                            key={i}
-                                            onPress={() => handleVehicleImagePress(img, i)}
-                                        >
-                                            <Image
-                                                source={{ uri: img }}
-                                                style={tw`w-32 h-24 rounded-lg mr-3 bg-gray-200`}
-                                            />
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
+            <View style={tw`bg-white p-6 mb-3`}>
+                <View style={tw`flex-row items-center justify-between mb-4`}>
+                    <View style={tw`flex-row items-center`}>
+                        <Ionicons name="car-sport" size={24} color="#000" />
+                        <Text style={tw`text-xl font-bold ml-2`}>My Vehicles</Text>
+                        {driverData?.vehicles && driverData.vehicles.length > 0 && (
+                            <View style={tw`ml-2 bg-blue-500 px-2 py-1 rounded-full`}>
+                                <Text style={tw`text-white text-xs font-bold`}>{driverData.vehicles.length}</Text>
                             </View>
                         )}
-                        {(!driverData.vehicle.images || driverData.vehicle.images.length === 0) && (
-                            <TouchableOpacity
-                                onPress={handleAddVehicleImages}
-                                disabled={uploading}
-                                style={tw`mt-4 border-2 border-dashed border-gray-300 rounded-lg p-6 items-center`}
-                            >
-                                <Ionicons name="images-outline" size={40} color="#9ca3af" />
-                                <Text style={tw`text-gray-600 mt-2`}>Tap to add vehicle images</Text>
-                                <Text style={tw`text-gray-400 text-xs mt-1`}>Maximum 4 images allowed</Text>
-                            </TouchableOpacity>
-                        )}
                     </View>
-                )
-            }
+                    <TouchableOpacity
+                        onPress={() => router.push("/profile/vehicles")}
+                        style={tw`bg-blue-500 px-4 py-2 rounded-lg flex-row items-center`}
+                    >
+                        <Ionicons name="settings-outline" size={16} color="white" />
+                        <Text style={tw`text-white font-semibold ml-2`}>Manage</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {driverData?.vehicles && driverData.vehicles.length > 0 ? (
+                    <View>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`-mx-2`}>
+                            {driverData.vehicles.map((vehicle, index) => (
+                                <TouchableOpacity
+                                    key={index}
+                                    onPress={() => router.push("/profile/vehicles")}
+                                    style={tw`mx-2 bg-gray-50 rounded-xl overflow-hidden w-64`}
+                                >
+                                    {vehicle.images && vehicle.images.length > 0 ? (
+                                        <Image
+                                            source={{ uri: vehicle.images[0] }}
+                                            style={tw`w-full h-40 bg-gray-200`}
+                                            resizeMode="cover"
+                                        />
+                                    ) : (
+                                        <View style={tw`w-full h-40 bg-gray-200 items-center justify-center`}>
+                                            <Ionicons name="car-sport-outline" size={48} color="#9CA3AF" />
+                                        </View>
+                                    )}
+                                    <View style={tw`p-4`}>
+                                        <Text style={tw`font-bold text-lg`}>
+                                            {vehicle.brand} {vehicle.model}
+                                        </Text>
+                                        <Text style={tw`text-gray-500 text-sm mt-1`}>
+                                            {vehicle.year} • {vehicle.color}
+                                        </Text>
+                                        <View style={tw`bg-gray-100 px-3 py-1 rounded-lg mt-2 self-start`}>
+                                            <Text style={tw`font-mono font-bold text-xs`}>
+                                                {vehicle.licensePlate}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                ) : (
+                    <TouchableOpacity
+                        onPress={() => router.push("/profile/vehicles")}
+                        style={tw`bg-gray-50 p-6 rounded-xl items-center border-2 border-dashed border-gray-300`}
+                    >
+                        <Ionicons name="car-sport-outline" size={48} color="#9CA3AF" />
+                        <Text style={tw`text-gray-600 mt-3 font-semibold`}>No vehicles added yet</Text>
+                        <Text style={tw`text-gray-400 text-sm mt-1 text-center`}>
+                            Tap to add your first vehicle
+                        </Text>
+                    </TouchableOpacity>
+                )}
+            </View>
 
             {/* Verification Status */}
             <View style={tw`bg-white p-6 mb-3`}>
@@ -1147,9 +927,13 @@ export default function Profile() {
                                     style: "destructive",
                                     onPress: async () => {
                                         try {
+                                            setLoading(true);
                                             await signOut();
+                                            router.replace("/(auth)/sign-in");
                                         } catch (error) {
                                             console.error("Error signing out:", error);
+                                        } finally {
+                                            setLoading(false);
                                         }
                                     }
                                 }
