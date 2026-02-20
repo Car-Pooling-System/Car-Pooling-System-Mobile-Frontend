@@ -166,7 +166,10 @@ export default function RideDetails() {
     }
 
     const { route, schedule, metrics, seats, driver, passengers, pricing, preferences } = ride;
+    const vehicle = ride.vehicle;
     const departureTime = new Date(schedule.departureTime);
+    const isVerified = driver?.isVerified;
+    const verDet = driver?.verificationDetails || {};
 
     // Arrival time fix: Calculate if invalid
     let arrivalTime = new Date(schedule.arrivalTime);
@@ -267,10 +270,26 @@ export default function RideDetails() {
                                 <Image source={{ uri: driver.profileImage }} style={tw`w-14 h-14 rounded-full mr-4`} />
                                 <View style={tw`flex-1`}>
                                     <Text style={[tw`text-lg font-bold`, { color: colors.textPrimary }]}>{driver.name}</Text>
-                                    <View style={tw`flex-row items-center mt-1`}>
-                                        <Ionicons name="star" size={14} color="#f59e0b" />
-                                        <Text style={[tw`text-xs font-bold ml-1`, { color: colors.textSecondary }]}>4.9 · Verified</Text>
+                                    <View style={tw`flex-row items-center mt-1 gap-2`}>
+                                        <View style={tw`flex-row items-center`}>
+                                            <Ionicons name="star" size={13} color="#f59e0b" />
+                                            <Text style={[tw`text-xs font-bold ml-1`, { color: colors.textSecondary }]}>{driver.rating?.toFixed(1) || "New"}</Text>
+                                        </View>
+                                        <View style={[tw`flex-row items-center px-2 py-0.5 rounded-full`, { backgroundColor: isVerified ? colors.successSoft : colors.dangerSoft }]}>
+                                            <Ionicons name={isVerified ? "shield-checkmark" : "shield-outline"} size={12} color={isVerified ? colors.success : colors.danger} />
+                                            <Text style={[tw`text-xs font-bold ml-1`, { color: isVerified ? colors.success : colors.danger }]}>
+                                                {isVerified ? "Verified" : "Unverified"}
+                                            </Text>
+                                        </View>
                                     </View>
+                                    {!isVerified && (
+                                        <View style={tw`flex-row flex-wrap gap-1 mt-1`}>
+                                            {!verDet.email && <Text style={[tw`text-[9px] px-1.5 py-0.5 rounded`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>Email</Text>}
+                                            {!verDet.phone && <Text style={[tw`text-[9px] px-1.5 py-0.5 rounded`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>Phone</Text>}
+                                            {!verDet.license && <Text style={[tw`text-[9px] px-1.5 py-0.5 rounded`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>License</Text>}
+                                            {!verDet.vehicle && <Text style={[tw`text-[9px] px-1.5 py-0.5 rounded`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>Vehicle</Text>}
+                                        </View>
+                                    )}
                                 </View>
                                 <TouchableOpacity
                                     style={[tw`p-3 rounded-full`, { backgroundColor: colors.primarySoft }]}
@@ -279,21 +298,42 @@ export default function RideDetails() {
                                     <Ionicons name="call" size={20} color={colors.primary} />
                                 </TouchableOpacity>
                             </View>
-                            <View style={tw`flex-row justify-between items-center`}>
-                                <View>
-                                    <Text style={[tw`text-xs`, { color: colors.textSecondary }]}>VEHICLE</Text>
-                                    <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{driver.vehicle?.brand} {driver.vehicle?.model}</Text>
+
+                            {/* Vehicle Card */}
+                            {vehicle && (
+                                <View style={[tw`rounded-xl overflow-hidden border`, { borderColor: colors.border }]}>
+                                    {vehicle.image ? (
+                                        <Image source={{ uri: vehicle.image }} style={{ width: "100%", height: 120 }} resizeMode="cover" />
+                                    ) : (
+                                        <View style={[tw`justify-center items-center`, { height: 80, backgroundColor: colors.surfaceMuted }]}>
+                                            <MaterialCommunityIcons name="car" size={36} color={colors.textMuted} />
+                                        </View>
+                                    )}
+                                    <View style={[tw`flex-row justify-between items-center px-3 py-2`, { backgroundColor: colors.surface }]}>
+                                        <View>
+                                            <Text style={[tw`font-bold text-sm`, { color: colors.textPrimary }]}>{vehicle.brand} {vehicle.model} · {vehicle.year}</Text>
+                                            <Text style={[tw`text-xs`, { color: colors.textSecondary }]}>{vehicle.color}</Text>
+                                        </View>
+                                        <View style={[tw`px-2 py-1 rounded-lg`, { backgroundColor: colors.surfaceMuted }]}>
+                                            <Text style={[tw`text-xs font-bold`, { color: colors.textPrimary }]}>{vehicle.licensePlate}</Text>
+                                        </View>
+                                    </View>
                                 </View>
-                                <View style={tw`p-2 bg-gray-100 rounded-lg`}>
-                                    <Text style={[tw`text-xs font-bold`, { color: colors.textPrimary }]}>{driver.vehicle?.licensePlate}</Text>
-                                </View>
-                            </View>
+                            )}
                         </View>
                     ) : (
                         <View style={[tw`bg-white rounded-2xl p-6 mb-6 shadow-sm border`, { borderColor: colors.border }]}>
                             <View style={tw`flex-row justify-between items-center mb-4`}>
                                 <Text style={[tw`text-sm font-bold`, { color: colors.textSecondary }]}>PASSENGERS</Text>
-                                <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>{confirmedPassengers.length}/{seats.total} Booked</Text>
+                                <View style={tw`flex-row items-center gap-2`}>
+                                    <View style={[tw`flex-row items-center px-2 py-0.5 rounded-full`, { backgroundColor: isVerified ? colors.successSoft : colors.dangerSoft }]}>
+                                        <Ionicons name={isVerified ? "shield-checkmark" : "shield-outline"} size={11} color={isVerified ? colors.success : colors.danger} />
+                                        <Text style={[tw`text-[10px] font-bold ml-0.5`, { color: isVerified ? colors.success : colors.danger }]}>
+                                            {isVerified ? "Verified" : "Unverified"}
+                                        </Text>
+                                    </View>
+                                    <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>{confirmedPassengers.length}/{seats.total} Booked</Text>
+                                </View>
                             </View>
                             {confirmedPassengers.length > 0 ? (
                                 confirmedPassengers.map((passenger, index) => (
@@ -328,7 +368,7 @@ export default function RideDetails() {
                         <View style={tw`flex-row justify-around items-center`}>
                             <View style={tw`items-center`}>
                                 <MaterialCommunityIcons
-                                    name={preferences?.petsAllowed ? "dog" : "dog-off"}
+                                    name={preferences?.petsAllowed ? "dog" : "paw-off"}
                                     size={24}
                                     color={preferences?.petsAllowed ? colors.primary : colors.textMuted}
                                 />

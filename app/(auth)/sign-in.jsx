@@ -26,8 +26,9 @@ export default function SignIn() {
             if (isSignedIn && user) {
                 const role = user.unsafeMetadata?.role;
                 if (!role) {
-                    // New user — let them pick a role
-                    router.replace("/(auth)/role-select");
+                    // New user — default to rider
+                    await user.update({ unsafeMetadata: { ...user.unsafeMetadata, role: "rider" } });
+                    router.replace("/(rider)/search");
                 } else if (role === "driver") {
                     router.replace("/(app)/my-rides");
                 } else if (role === "rider") {

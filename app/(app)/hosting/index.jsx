@@ -45,6 +45,23 @@ export default function CreateRide() {
     const [smokingAllowed, setSmokingAllowed] = useState(false);
     const [max2Allowed, setMax2Allowed] = useState(true);
 
+    // Vehicle & Seats
+    const [vehicles, setVehicles] = useState([]);
+    const [selectedVehicleIdx, setSelectedVehicleIdx] = useState(0);
+    const [totalSeats, setTotalSeats] = useState(4);
+    const SEAT_TYPES = [
+        { type: "front",       label: "Front Seat",              icon: "car-outline" },
+        { type: "backWindow",  label: "Back Window Seat",        icon: "car-sport-outline" },
+        { type: "backMiddle",  label: "Back Middle Seat",        icon: "people-outline" },
+        { type: "backArmrest", label: "Back Seat w/ Armrest",    icon: "accessibility-outline" },
+        { type: "thirdRow",    label: "Third Row Seat",          icon: "bus-outline" },
+        { type: "any",         label: "Any Seat (No Preference)", icon: "grid-outline" },
+    ];
+    const [seatCounts, setSeatCounts] = useState(
+        Object.fromEntries(SEAT_TYPES.map(s => [s.type, 0]))
+    );
+    const seatTotal = Object.values(seatCounts).reduce((a, b) => a + b, 0);
+
     const onPlaceSelected = (data, details, type) => {
         const location = {
             name: data.structured_formatting?.main_text || data.description,
@@ -136,6 +153,26 @@ export default function CreateRide() {
     }, [startLocation, endLocation]);
 
     useEffect(() => {
+        const loadVehicles = async () => {
+            if (!user?.id) return;
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/driver-profile/${user.id}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.vehicles?.length) {
+                        setVehicles(data.vehicles);
+                        // Pre-seed total seats from first vehicle
+                        if (data.vehicles[0]?.totalSeats) {
+                            setTotalSeats(data.vehicles[0].totalSeats);
+                        }
+                    }
+                }
+            } catch (e) { console.error("Failed to load vehicles:", e); }
+        };
+        loadVehicles();
+    }, [user?.id]);
+
+    useEffect(() => {
         (async () => {
             let { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') return;
@@ -163,6 +200,18 @@ export default function CreateRide() {
             return;
         }
 
+        if (vehicles.length === 0) {
+            Alert.alert(
+                "No Vehicle Registered",
+                "You need to register at least one vehicle before creating a ride.",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Add Vehicle", onPress: () => router.push("/profile/vehicles") },
+                ]
+            );
+            return;
+        }
+
         setIsPublishing(true);
         try {
             const finalFare = recommendedFare + (Number(extraFare) || 0);
@@ -176,7 +225,21 @@ export default function CreateRide() {
                 route: routeData,
                 schedule: { departureTime: date.toISOString() },
                 pricing: { baseFare: finalFare },
-                seats: { total: 4, available: 4, front: 1, back: 2 },
+                seats: {
+                    total: totalSeats,
+                    available: totalSeats,
+                    seatTypes: SEAT_TYPES
+                        .filter(s => seatCounts[s.type] > 0)
+                        .map(s => ({ type: s.type, label: s.label, count: seatCounts[s.type] })),
+                },
+                vehicle: vehicles[selectedVehicleIdx] ? {
+                    brand: vehicles[selectedVehicleIdx].brand,
+                    model: vehicles[selectedVehicleIdx].model,
+                    year: vehicles[selectedVehicleIdx].year,
+                    color: vehicles[selectedVehicleIdx].color,
+                    licensePlate: vehicles[selectedVehicleIdx].licensePlate,
+                    image: vehicles[selectedVehicleIdx].images?.[0] || null,
+                } : null,
                 preferences: { petsAllowed, smokingAllowed, max2Allowed },
                 metrics: routeData.metrics,
             };
@@ -378,6 +441,135 @@ export default function CreateRide() {
                                     }}
                                 />
                             )}
+
+                            {/* Vehicle Picker */}
+                            {vehicles.length > 0 && (
+                                <>
+                                    <Text style={tw`text-xs font-bold text-gray-400 mb-2 uppercase`}>Vehicle</Text>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-6`}>
+                                        {vehicles.map((v, idx) => (
+                                            <TouchableOpacity
+                                                key={idx}
+                                                onPress={() => {
+                                                    setSelectedVehicleIdx(idx);
+                                                    // Pre-populate total seats from this vehicle
+                                                    if (v.totalSeats) {
+                                                        setTotalSeats(v.totalSeats);
+                                                        setSeatCounts(Object.fromEntries(SEAT_TYPES.map(s => [s.type, 0])));
+                                                    }
+                                                }}
+                                                style={[
+                                                    tw`mr-3 rounded-xl border-2 overflow-hidden`,
+                                                    { width: 160, borderColor: selectedVehicleIdx === idx ? theme.light.primary : '#E5E7EB' }
+                                                ]}
+                                            >
+                                                {v.images?.[0] ? (
+                                                    <Image source={{ uri: v.images[0] }} style={{ width: 160, height: 90 }} resizeMode="cover" />
+                                                ) : (
+                                                    <View style={[tw`justify-center items-center`, { width: 160, height: 90, backgroundColor: '#F3F4F6' }]}>
+                                                        <MaterialCommunityIcons name="car" size={36} color="#9CA3AF" />
+                                                    </View>
+                                                )}
+                                                <View style={tw`p-2`}>
+                                                    <Text style={tw`font-bold text-gray-900 text-sm`}>{v.brand} {v.model}</Text>
+                                                    <Text style={tw`text-gray-500 text-xs`}>{v.color} · {v.year}</Text>
+                                                    <Text style={tw`text-gray-400 text-xs`}>{v.licensePlate}</Text>
+                                                </View>
+                                                {selectedVehicleIdx === idx && (
+                                                    <View style={[tw`absolute top-2 right-2 rounded-full p-0.5`, { backgroundColor: theme.light.primary }]}>
+                                                        <Ionicons name="checkmark" size={12} color="white" />
+                                                    </View>
+                                                )}
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
+                                </>
+                            )}
+
+                            {/* Seat Configuration */}
+                            <Text style={tw`text-xs font-bold text-gray-400 mb-2 uppercase`}>Seat Configuration</Text>
+                            <View style={tw`bg-white p-4 rounded-xl border border-gray-200 mb-2 shadow-sm`}>
+                                {/* Total seats stepper */}
+                                <View style={tw`flex-row justify-between items-center pb-3 mb-3 border-b border-gray-100`}>
+                                    <View>
+                                        <Text style={tw`font-semibold text-gray-900`}>Total Seats Offered</Text>
+                                        <Text style={tw`text-xs text-gray-400`}>How many passengers can join?</Text>
+                                    </View>
+                                    <View style={tw`flex-row items-center gap-3`}>
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                const next = Math.max(1, totalSeats - 1);
+                                                setTotalSeats(next);
+                                                // clamp seatCounts to new total
+                                                setSeatCounts(prev => {
+                                                    const updated = { ...prev };
+                                                    let excess = Object.values(updated).reduce((a,b)=>a+b,0) - next;
+                                                    for (const k of Object.keys(updated).reverse()) {
+                                                        if (excess <= 0) break;
+                                                        const cut = Math.min(updated[k], excess);
+                                                        updated[k] -= cut;
+                                                        excess -= cut;
+                                                    }
+                                                    return updated;
+                                                });
+                                            }}
+                                            style={tw`w-8 h-8 bg-gray-100 rounded-full items-center justify-center`}
+                                        >
+                                            <Ionicons name="remove" size={18} color="#374151" />
+                                        </TouchableOpacity>
+                                        <Text style={tw`text-lg font-bold text-gray-900 w-6 text-center`}>{totalSeats}</Text>
+                                        <TouchableOpacity
+                                            onPress={() => setTotalSeats(t => Math.min(t + 1, 12))}
+                                            style={[tw`w-8 h-8 rounded-full items-center justify-center`, { backgroundColor: theme.light.primary }]}
+                                        >
+                                            <Ionicons name="add" size={18} color="white" />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+
+                                {/* Per-type seat rows */}
+                                {SEAT_TYPES.map(seat => (
+                                    <View key={seat.type} style={tw`flex-row items-center justify-between py-2`}>
+                                        <View style={tw`flex-row items-center flex-1`}>
+                                            <Ionicons name={seat.icon} size={18} color="#6B7280" style={tw`mr-3`} />
+                                            <Text style={tw`text-gray-700 text-sm flex-1`}>{seat.label}</Text>
+                                        </View>
+                                        <View style={tw`flex-row items-center gap-2`}>
+                                            <TouchableOpacity
+                                                onPress={() => setSeatCounts(prev => ({ ...prev, [seat.type]: Math.max(0, prev[seat.type] - 1) }))}
+                                                disabled={seatCounts[seat.type] === 0}
+                                                style={[tw`w-7 h-7 rounded-full items-center justify-center`, seatCounts[seat.type] === 0 ? tw`bg-gray-100` : tw`bg-gray-200`]}
+                                            >
+                                                <Ionicons name="remove" size={15} color={seatCounts[seat.type] === 0 ? '#D1D5DB' : '#374151'} />
+                                            </TouchableOpacity>
+                                            <Text style={tw`text-sm font-semibold text-gray-900 w-5 text-center`}>{seatCounts[seat.type]}</Text>
+                                            <TouchableOpacity
+                                                onPress={() => {
+                                                    if (seatTotal < totalSeats) {
+                                                        setSeatCounts(prev => ({ ...prev, [seat.type]: prev[seat.type] + 1 }));
+                                                    }
+                                                }}
+                                                disabled={seatTotal >= totalSeats}
+                                                style={[tw`w-7 h-7 rounded-full items-center justify-center`, seatTotal >= totalSeats ? tw`bg-gray-100` : { backgroundColor: theme.light.primary }]}
+                                            >
+                                                <Ionicons name="add" size={15} color={seatTotal >= totalSeats ? '#D1D5DB' : 'white'} />
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                ))}
+
+                                {/* Tally indicator */}
+                                <View style={[tw`mt-3 pt-3 border-t border-gray-100 flex-row justify-between items-center`]}>
+                                    <Text style={tw`text-xs text-gray-500`}>Allocated: {seatTotal} / {totalSeats}</Text>
+                                    {seatTotal < totalSeats && (
+                                        <Text style={tw`text-xs text-amber-500 font-medium`}>{totalSeats - seatTotal} seat{totalSeats - seatTotal > 1 ? 's' : ''} unassigned — OK or assign above</Text>
+                                    )}
+                                    {seatTotal === totalSeats && (
+                                        <Text style={[tw`text-xs font-medium`, { color: theme.light.success }]}>✓ All seats assigned</Text>
+                                    )}
+                                </View>
+                            </View>
+                            <View style={tw`mb-6`} />
 
                             {/* Pricing */}
                             <View style={tw`bg-white p-4 rounded-xl border border-gray-200 mb-6 gap-2 shadow-sm`}>

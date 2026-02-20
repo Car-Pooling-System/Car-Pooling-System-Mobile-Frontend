@@ -15,9 +15,6 @@ export default function AuthLayout() {
         return <Redirect href="/(rider)/search" />;
     }
 
-    if (isSignedIn && !user?.unsafeMetadata?.role) {
-        return <Redirect href="/(auth)/role-select" />;
-    }
-
+    // No role yet — let the Stack render (sign-in useEffect navigates to role-select)
     return <Stack screenOptions={{ headerShown: false }} />;
 }
