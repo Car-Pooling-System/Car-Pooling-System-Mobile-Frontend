@@ -852,10 +852,7 @@ export default function Profile() {
                         <Ionicons name="car-sport" size={24} color={colors.textPrimary} />
                         <Text style={[tw`text-xl font-bold ml-2`, { color: colors.textPrimary }]}>My Vehicles</Text>
                         {driverData?.vehicles && driverData.vehicles.length > 0 && (
-                            <View style={tw`flex-row items-center gap-1`}>
-                                <View style={[tw`ml-2 px-2 py-1 rounded-full`, { backgroundColor: colors.primary }]}>
-                                    <Text style={tw`text-white text-xs font-bold`}>{driverData.vehicles.length}</Text>
-                                </View>
+                            <View style={tw`ml-2 flex-row items-center gap-1`}>
                                 {(() => {
                                     const ins = driverData.vehicles.filter(v => v.insuranceVerified).length;
                                     const tot = driverData.vehicles.length;
