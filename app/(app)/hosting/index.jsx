@@ -182,11 +182,12 @@ export default function CreateRide() {
                 if (res.ok) {
                     const data = await res.json();
                     if (data.vehicles?.length) {
-                        setVehicles(data.vehicles);
-                        // Pre-seed total seats from first vehicle
-                        if (data.vehicles[0]?.totalSeats) {
-                            setTotalSeats(data.vehicles[0].totalSeats);
-                            setSeatCounts(prev => ({ ...prev, any: data.vehicles[0].totalSeats }));
+                        const verified = data.vehicles.filter(v => v.insuranceVerified);
+                        setVehicles(verified);
+                        // Pre-seed total seats from first verified vehicle
+                        if (verified[0]?.totalSeats) {
+                            setTotalSeats(verified[0].totalSeats);
+                            setSeatCounts(prev => ({ ...prev, any: verified[0].totalSeats }));
                         }
                     }
                 }
@@ -225,11 +226,11 @@ export default function CreateRide() {
 
         if (vehicles.length === 0) {
             Alert.alert(
-                "No Vehicle Registered",
-                "You need to register at least one vehicle before creating a ride.",
+                "No Verified Vehicle",
+                "You need at least one vehicle with verified insurance to create a ride. Add insurance in My Vehicles.",
                 [
                     { text: "Cancel", style: "cancel" },
-                    { text: "Add Vehicle", onPress: () => router.push("/profile/vehicles") },
+                    { text: "Manage Vehicles", onPress: () => router.push("/profile/vehicles") },
                 ]
             );
             return;
