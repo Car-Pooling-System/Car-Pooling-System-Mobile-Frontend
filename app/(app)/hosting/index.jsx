@@ -21,6 +21,8 @@ export default function CreateRide() {
     const { user } = useUser();
     const router = useRouter();
     const mapRef = useRef(null);
+    const startRef = useRef(null);
+    const endRef = useRef(null);
 
     // State
     const [startLocation, setStartLocation] = useState(null);
@@ -43,7 +45,41 @@ export default function CreateRide() {
     // Preferences
     const [petsAllowed, setPetsAllowed] = useState(false);
     const [smokingAllowed, setSmokingAllowed] = useState(false);
-    const [max2Allowed, setMax2Allowed] = useState(true);
+    const [luggageSpace, setLuggageSpace] = useState(false);
+
+    // Vehicle & Seats
+    const [vehicles, setVehicles] = useState([]);
+    const [selectedVehicleIdx, setSelectedVehicleIdx] = useState(0);
+    const [totalSeats, setTotalSeats] = useState(4);
+    const SEAT_TYPES = [
+        { type: "front",       label: "Front Seat",              icon: "car-outline" },
+        { type: "backWindow",  label: "Back Window Seat",        icon: "car-sport-outline" },
+        { type: "backMiddle",  label: "Back Middle Seat",        icon: "people-outline" },
+        { type: "backArmrest", label: "Back Seat w/ Armrest",    icon: "accessibility-outline" },
+        { type: "thirdRow",    label: "Third Row Seat",          icon: "bus-outline" },
+        { type: "any",         label: "Any Seat (No Preference)", icon: "grid-outline" },
+    ];
+    const [seatCounts, setSeatCounts] = useState(
+        { front: 0, backWindow: 0, backMiddle: 0, backArmrest: 0, thirdRow: 0, any: 4 }
+    );
+    const seatTotal = Object.values(seatCounts).reduce((a, b) => a + b, 0);
+
+    // Extra time for breaks / stops
+    const [extraHours, setExtraHours] = useState(0);
+    const [extraMins, setExtraMins] = useState(0);
+    const extraTimeMinutes = extraHours * 60 + extraMins;
+
+    const formatDuration = (mins) => {
+        const total = Math.round(mins);
+        const d = Math.floor(total / 1440);
+        const h = Math.floor((total % 1440) / 60);
+        const m = total % 60;
+        const parts = [];
+        if (d > 0) parts.push(`${d}d`);
+        if (h > 0) parts.push(`${h}h`);
+        if (m > 0 || parts.length === 0) parts.push(`${m}m`);
+        return parts.join(' ');
+    };
 
     const onPlaceSelected = (data, details, type) => {
         const location = {
@@ -126,7 +162,10 @@ export default function CreateRide() {
     const handleClearRoute = () => {
         setRouteData(null);
         setRouteCoordinates([]);
-        // Optional: clear start/end locations if desired, currently keeping them
+        setStartLocation(null);
+        setEndLocation(null);
+        startRef.current?.clear();
+        endRef.current?.clear();
     };
 
     useEffect(() => {
@@ -134,6 +173,27 @@ export default function CreateRide() {
             fetchRoute();
         }
     }, [startLocation, endLocation]);
+
+    useEffect(() => {
+        const loadVehicles = async () => {
+            if (!user?.id) return;
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/driver-profile/${user.id}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.vehicles?.length) {
+                        setVehicles(data.vehicles);
+                        // Pre-seed total seats from first vehicle
+                        if (data.vehicles[0]?.totalSeats) {
+                            setTotalSeats(data.vehicles[0].totalSeats);
+                            setSeatCounts(prev => ({ ...prev, any: data.vehicles[0].totalSeats }));
+                        }
+                    }
+                }
+            } catch (e) { console.error("Failed to load vehicles:", e); }
+        };
+        loadVehicles();
+    }, [user?.id]);
 
     useEffect(() => {
         (async () => {
@@ -163,6 +223,18 @@ export default function CreateRide() {
             return;
         }
 
+        if (vehicles.length === 0) {
+            Alert.alert(
+                "No Vehicle Registered",
+                "You need to register at least one vehicle before creating a ride.",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Add Vehicle", onPress: () => router.push("/profile/vehicles") },
+                ]
+            );
+            return;
+        }
+
         setIsPublishing(true);
         try {
             const finalFare = recommendedFare + (Number(extraFare) || 0);
@@ -174,11 +246,26 @@ export default function CreateRide() {
                     profileImage: user.imageUrl,
                 },
                 route: routeData,
-                schedule: { departureTime: date.toISOString() },
+                schedule: { departureTime: date.toISOString(), extraTimeMinutes },
                 pricing: { baseFare: finalFare },
-                seats: { total: 4, available: 4, front: 1, back: 2 },
-                preferences: { petsAllowed, smokingAllowed, max2Allowed },
-                metrics: routeData.metrics,
+                seats: {
+                    total: totalSeats,
+                    available: totalSeats,
+                    seatTypes: SEAT_TYPES
+                        .filter(s => seatCounts[s.type] > 0)
+                        .map(s => ({ type: s.type, label: s.label, count: seatCounts[s.type] })),
+                },
+                vehicle: vehicles[selectedVehicleIdx] ? {
+                    brand: vehicles[selectedVehicleIdx].brand,
+                    model: vehicles[selectedVehicleIdx].model,
+                    year: vehicles[selectedVehicleIdx].year,
+                    color: vehicles[selectedVehicleIdx].color,
+                    licensePlate: vehicles[selectedVehicleIdx].licensePlate,
+                    image: vehicles[selectedVehicleIdx].images?.[0] || null,
+                    hasLuggageSpace: vehicles[selectedVehicleIdx].hasLuggageSpace || false,
+                } : null,
+                preferences: { petsAllowed, smokingAllowed, luggageSpace },
+                metrics: { ...routeData.metrics, durationMinutes: routeData.metrics.durationMinutes + extraTimeMinutes },
             };
 
             const response = await fetch(`${BACKEND_URL}/api/rides`, {
@@ -291,6 +378,7 @@ export default function CreateRide() {
                             <View style={tw`flex-1 gap-3`}>
                                 <View style={{ zIndex: 100 }}>
                                     <GooglePlacesAutocomplete
+                                        ref={startRef}
                                         placeholder="Starting Point"
                                         fetchDetails={true}
                                         onPress={(data, details = null) => onPlaceSelected(data, details, "start")}
@@ -304,6 +392,7 @@ export default function CreateRide() {
                                 </View>
                                 <View style={{ zIndex: 50 }}>
                                     <GooglePlacesAutocomplete
+                                        ref={endRef}
                                         placeholder="Destination"
                                         fetchDetails={true}
                                         onPress={(data, details = null) => onPlaceSelected(data, details, "end")}
@@ -331,16 +420,113 @@ export default function CreateRide() {
 
                         <ScrollView contentContainerStyle={tw`p-6 pt-0 pb-12`}>
                             {/* Summary */}
-                            <View style={tw`bg-gray-50 p-4 rounded-xl mb-6 border border-gray-100`}>
+                            <View style={tw`bg-gray-50 p-4 rounded-xl mb-4 border border-gray-100`}>
                                 <View style={tw`flex-row justify-between items-center`}>
                                     <View>
                                         <Text style={tw`text-gray-500 text-xs font-bold`}>DISTANCE</Text>
                                         <Text style={tw`text-lg font-bold text-gray-900`}>{routeData.metrics.totalDistanceKm.toFixed(1)} km</Text>
                                     </View>
                                     <View style={tw`items-end`}>
-                                        <Text style={tw`text-gray-500 text-xs font-bold`}>DURATION</Text>
-                                        <Text style={tw`text-lg font-bold text-gray-900`}>{Math.round(routeData.metrics.durationMinutes)} min</Text>
+                                        <Text style={tw`text-gray-500 text-xs font-bold`}>DRIVE TIME</Text>
+                                        <Text style={tw`text-lg font-bold text-gray-900`}>{formatDuration(routeData.metrics.durationMinutes)}</Text>
                                     </View>
+                                </View>
+                                {extraTimeMinutes > 0 && (
+                                    <View style={tw`mt-3 pt-3 border-t border-gray-200 flex-row justify-between items-center`}>
+                                        <Text style={tw`text-xs text-gray-500`}>+{formatDuration(extraTimeMinutes)} for breaks</Text>
+                                        <View style={tw`items-end`}>
+                                            <Text style={tw`text-xs text-gray-400`}>Total Duration</Text>
+                                            <Text style={[tw`text-base font-bold`, { color: theme.light.primary }]}>
+                                                {formatDuration(routeData.metrics.durationMinutes + extraTimeMinutes)}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                )}
+                            </View>
+
+                            {/* Break & Stop Time */}
+                            <Text style={tw`text-xs font-bold text-gray-400 mb-2 uppercase`}>Break & Stop Time</Text>
+                            <View style={tw`bg-white rounded-xl border border-gray-200 mb-6 shadow-sm overflow-hidden`}>
+                                {/* Status bar */}
+                                <View style={tw`flex-row items-center px-4 py-2.5 bg-gray-50`}>
+                                    <Ionicons name="cafe-outline" size={14} color="#9CA3AF" style={tw`mr-2`} />
+                                    <Text style={tw`text-xs text-gray-400 flex-1`}>
+                                        {extraTimeMinutes === 0 ? 'No break added' : `+${formatDuration(extraTimeMinutes)} added to trip duration`}
+                                    </Text>
+                                    {extraTimeMinutes > 0 && (
+                                        <TouchableOpacity onPress={() => { setExtraHours(0); setExtraMins(0); }}>
+                                            <Text style={tw`text-xs text-red-400 font-bold`}>Clear</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+
+                                {/* Compact steppers row */}
+                                <View style={tw`flex-row items-center justify-center px-6 py-4 gap-3`}>
+                                    {/* Hours */}
+                                    <View style={tw`flex-1 items-center gap-2`}>
+                                        <Text style={tw`text-[10px] font-bold text-gray-400 uppercase tracking-wider`}>Hours</Text>
+                                        <View style={tw`flex-row items-center gap-2`}>
+                                            <TouchableOpacity
+                                                onPress={() => setExtraHours(h => Math.max(0, h - 1))}
+                                                disabled={extraHours === 0}
+                                                style={[tw`w-7 h-7 rounded-full items-center justify-center`, extraHours === 0 ? tw`bg-gray-100` : tw`bg-gray-200`]}
+                                            >
+                                                <Ionicons name="remove" size={14} color={extraHours === 0 ? '#D1D5DB' : '#374151'} />
+                                            </TouchableOpacity>
+                                            <Text style={[tw`text-2xl font-bold w-8 text-center`, { color: extraHours > 0 ? theme.light.primary : '#9CA3AF' }]}>
+                                                {extraHours}
+                                            </Text>
+                                            <TouchableOpacity
+                                                onPress={() => setExtraHours(h => Math.min(23, h + 1))}
+                                                style={[tw`w-7 h-7 rounded-full items-center justify-center`, { backgroundColor: theme.light.primary }]}
+                                            >
+                                                <Ionicons name="add" size={14} color="white" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+
+                                    <Text style={tw`text-2xl font-light text-gray-300 pb-1`}>:</Text>
+
+                                    {/* Minutes */}
+                                    <View style={tw`flex-1 items-center gap-2`}>
+                                        <Text style={tw`text-[10px] font-bold text-gray-400 uppercase tracking-wider`}>Min (×15)</Text>
+                                        <View style={tw`flex-row items-center gap-2`}>
+                                            <TouchableOpacity
+                                                onPress={() => setExtraMins(m => Math.max(0, m - 15))}
+                                                disabled={extraMins === 0}
+                                                style={[tw`w-7 h-7 rounded-full items-center justify-center`, extraMins === 0 ? tw`bg-gray-100` : tw`bg-gray-200`]}
+                                            >
+                                                <Ionicons name="remove" size={14} color={extraMins === 0 ? '#D1D5DB' : '#374151'} />
+                                            </TouchableOpacity>
+                                            <Text style={[tw`text-2xl font-bold w-8 text-center`, { color: extraMins > 0 ? theme.light.primary : '#9CA3AF' }]}>
+                                                {extraMins}
+                                            </Text>
+                                            <TouchableOpacity
+                                                onPress={() => setExtraMins(m => (m + 15) % 60)}
+                                                style={[tw`w-7 h-7 rounded-full items-center justify-center`, { backgroundColor: theme.light.primary }]}
+                                            >
+                                                <Ionicons name="add" size={14} color="white" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                </View>
+
+                                {/* Quick presets */}
+                                <View style={[tw`flex-row px-4 pb-4 gap-2`, { borderTopWidth: 1, borderTopColor: '#F3F4F6' }]}>
+                                    {[{ h: 0, m: 15, label: '15m' }, { h: 0, m: 30, label: '30m' }, { h: 1, m: 0, label: '1h' }, { h: 1, m: 30, label: '1h 30m' }, { h: 2, m: 0, label: '2h' }].map(p => {
+                                        const active = extraHours === p.h && extraMins === p.m;
+                                        return (
+                                            <TouchableOpacity
+                                                key={p.label}
+                                                onPress={() => { setExtraHours(p.h); setExtraMins(p.m); }}
+                                                style={[tw`flex-1 py-2 rounded-lg border items-center mt-3`, active
+                                                    ? { backgroundColor: theme.light.primary, borderColor: theme.light.primary }
+                                                    : { backgroundColor: 'white', borderColor: '#E5E7EB' }]}
+                                            >
+                                                <Text style={[tw`text-xs font-bold`, { color: active ? 'white' : '#6B7280' }]}>{p.label}</Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
                                 </View>
                             </View>
 
@@ -379,23 +565,203 @@ export default function CreateRide() {
                                 />
                             )}
 
-                            {/* Pricing */}
-                            <View style={tw`bg-white p-4 rounded-xl border border-gray-200 mb-6 gap-2 shadow-sm`}>
-                                <View style={tw`flex-row justify-between`}>
-                                    <Text style={tw`text-gray-600`}>Base Price (Rec.)</Text>
-                                    <Text style={tw`font-semibold`}>₹{recommendedFare}</Text>
+                            {/* Vehicle Picker */}
+                            {vehicles.length > 0 && (
+                                <>
+                                    <Text style={tw`text-xs font-bold text-gray-400 mb-2 uppercase`}>Vehicle</Text>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-6`}>
+                                        {vehicles.map((v, idx) => (
+                                            <TouchableOpacity
+                                                key={idx}
+                                                onPress={() => {
+                                                    setSelectedVehicleIdx(idx);
+                                                    // Pre-populate total seats from this vehicle
+                                                    if (v.totalSeats) {
+                                                        setTotalSeats(v.totalSeats);
+                                                        setSeatCounts({ front: 0, backWindow: 0, backMiddle: 0, backArmrest: 0, thirdRow: 0, any: v.totalSeats });
+                                                    }
+                                                }}
+                                                style={[
+                                                    tw`mr-3 rounded-xl border-2 overflow-hidden`,
+                                                    { width: 160, borderColor: selectedVehicleIdx === idx ? theme.light.primary : '#E5E7EB' }
+                                                ]}
+                                            >
+                                                {v.images?.[0] ? (
+                                                    <Image source={{ uri: v.images[0] }} style={{ width: 160, height: 90 }} resizeMode="cover" />
+                                                ) : (
+                                                    <View style={[tw`justify-center items-center`, { width: 160, height: 90, backgroundColor: '#F3F4F6' }]}>
+                                                        <MaterialCommunityIcons name="car" size={36} color="#9CA3AF" />
+                                                    </View>
+                                                )}
+                                                <View style={tw`p-2`}>
+                                                    <Text style={tw`font-bold text-gray-900 text-sm`}>{v.brand} {v.model}</Text>
+                                                    <Text style={tw`text-gray-500 text-xs`}>{v.color} · {v.year}</Text>
+                                                    <Text style={tw`text-gray-400 text-xs`}>{v.licensePlate}</Text>
+                                                </View>
+                                                {selectedVehicleIdx === idx && (
+                                                    <View style={[tw`absolute top-2 right-2 rounded-full p-0.5`, { backgroundColor: theme.light.primary }]}>
+                                                        <Ionicons name="checkmark" size={12} color="white" />
+                                                    </View>
+                                                )}
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
+                                </>
+                            )}
+
+                            {/* Seat Configuration */}
+                            <Text style={tw`text-xs font-bold text-gray-400 mb-2 uppercase`}>Seat Configuration</Text>
+                            <View style={tw`bg-white p-4 rounded-xl border border-gray-200 mb-2 shadow-sm`}>
+                                {/* Total seats stepper */}
+                                {(() => {
+                                    const vehicleCapacity = vehicles[selectedVehicleIdx]?.totalSeats || 12;
+                                    const selectedVehicle = vehicles[selectedVehicleIdx];
+                                    return (
+                                        <View style={tw`pb-3 mb-3 border-b border-gray-100`}>
+                                            <View style={tw`flex-row justify-between items-center`}>
+                                                <View>
+                                                    <Text style={tw`font-semibold text-gray-900`}>Total Seats Offered</Text>
+                                                    <Text style={tw`text-xs text-gray-400`}>
+                                                        {selectedVehicle ? `Max ${vehicleCapacity} · ${selectedVehicle.brand} ${selectedVehicle.model}` : 'How many passengers can join?'}
+                                                    </Text>
+                                                </View>
+                                                <View style={tw`flex-row items-center gap-3`}>
+                                                    <TouchableOpacity
+                                                        onPress={() => {
+                                                            const next = Math.max(1, totalSeats - 1);
+                                                            setTotalSeats(next);
+                                                            setSeatCounts(prev => {
+                                                                const updated = { ...prev };
+                                                                let excess = Object.values(updated).reduce((a,b)=>a+b,0) - next;
+                                                                for (const k of Object.keys(updated).reverse()) {
+                                                                    if (excess <= 0) break;
+                                                                    const cut = Math.min(updated[k], excess);
+                                                                    updated[k] -= cut;
+                                                                    excess -= cut;
+                                                                }
+                                                                return updated;
+                                                            });
+                                                        }}
+                                                        style={tw`w-8 h-8 bg-gray-100 rounded-full items-center justify-center`}
+                                                    >
+                                                        <Ionicons name="remove" size={18} color="#374151" />
+                                                    </TouchableOpacity>
+                                                    <Text style={tw`text-lg font-bold text-gray-900 w-6 text-center`}>{totalSeats}</Text>
+                                                    <TouchableOpacity
+                                                        onPress={() => {
+                                                            if (totalSeats < vehicleCapacity) {
+                                                                setTotalSeats(t => t + 1);
+                                                                // Extra seat goes to 'any' to keep seatTotal === totalSeats
+                                                                setSeatCounts(prev => ({ ...prev, any: prev.any + 1 }));
+                                                            }
+                                                        }}
+                                                        disabled={totalSeats >= vehicleCapacity}
+                                                        style={[tw`w-8 h-8 rounded-full items-center justify-center`, totalSeats >= vehicleCapacity ? tw`bg-gray-100` : { backgroundColor: theme.light.primary }]}
+                                                    >
+                                                        <Ionicons name="add" size={18} color={totalSeats >= vehicleCapacity ? '#D1D5DB' : 'white'} />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            </View>
+                                            {totalSeats >= vehicleCapacity && (
+                                                <Text style={tw`text-xs text-amber-500 mt-1`}>⚠ At vehicle capacity ({vehicleCapacity} seats)</Text>
+                                            )}
+                                        </View>
+                                    );
+                                })()}
+
+                                {/* Per-type seat rows */}
+                                {SEAT_TYPES.map(seat => (
+                                    <View key={seat.type} style={tw`flex-row items-center justify-between py-2`}>
+                                        <View style={tw`flex-row items-center flex-1`}>
+                                            <Ionicons name={seat.icon} size={18} color="#6B7280" style={tw`mr-3`} />
+                                            <Text style={tw`text-gray-700 text-sm flex-1`}>{seat.label}</Text>
+                                        </View>
+                                        <View style={tw`flex-row items-center gap-2`}>
+                                            <TouchableOpacity
+                                                onPress={() => setSeatCounts(prev => ({ ...prev, [seat.type]: Math.max(0, prev[seat.type] - 1) }))}
+                                                disabled={seatCounts[seat.type] === 0}
+                                                style={[tw`w-7 h-7 rounded-full items-center justify-center`, seatCounts[seat.type] === 0 ? tw`bg-gray-100` : tw`bg-gray-200`]}
+                                            >
+                                                <Ionicons name="remove" size={15} color={seatCounts[seat.type] === 0 ? '#D1D5DB' : '#374151'} />
+                                            </TouchableOpacity>
+                                            <Text style={tw`text-sm font-semibold text-gray-900 w-5 text-center`}>{seatCounts[seat.type]}</Text>
+                                            <TouchableOpacity
+                                                onPress={() => {
+                                                    if (seatTotal < totalSeats) {
+                                                        setSeatCounts(prev => ({ ...prev, [seat.type]: prev[seat.type] + 1 }));
+                                                    }
+                                                }}
+                                                disabled={seatTotal >= totalSeats}
+                                                style={[tw`w-7 h-7 rounded-full items-center justify-center`, seatTotal >= totalSeats ? tw`bg-gray-100` : { backgroundColor: theme.light.primary }]}
+                                            >
+                                                <Ionicons name="add" size={15} color={seatTotal >= totalSeats ? '#D1D5DB' : 'white'} />
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                ))}
+
+                                {/* Tally indicator */}
+                                <View style={[tw`mt-3 pt-3 border-t border-gray-100 flex-row justify-between items-center`]}>
+                                    <Text style={tw`text-xs text-gray-500`}>Allocated: {seatTotal} / {totalSeats}</Text>
+                                    {seatTotal < totalSeats && (
+                                        <Text style={tw`text-xs text-amber-500 font-medium`}>{totalSeats - seatTotal} seat{totalSeats - seatTotal > 1 ? 's' : ''} unassigned — OK or assign above</Text>
+                                    )}
+                                    {seatTotal === totalSeats && (
+                                        <Text style={[tw`text-xs font-medium`, { color: theme.light.success }]}>✓ All seats assigned</Text>
+                                    )}
                                 </View>
-                                <View style={tw`flex-row items-center border-t border-gray-100 pt-2`}>
-                                    <TextInput
-                                        value={extraFare}
-                                        onChangeText={setExtraFare}
-                                        placeholder="+ Extra Amount"
-                                        keyboardType="numeric"
-                                        style={tw`flex-1 text-base font-medium text-gray-900 h-10`}
-                                    />
-                                    <Text style={tw`font-bold text-green-700 text-lg`}>
-                                        Total: ₹{recommendedFare + (Number(extraFare) || 0)}
-                                    </Text>
+                            </View>
+                            <View style={tw`mb-6`} />
+
+                            {/* Pricing */}
+                            <Text style={tw`text-xs font-bold text-gray-400 mb-2 uppercase`}>Pricing</Text>
+                            <View style={tw`rounded-xl border border-gray-200 mb-6 overflow-hidden shadow-sm`}>
+                                {/* Suggested fare banner */}
+                                <View style={tw`p-4 flex-row items-center justify-between bg-green-50`}>
+                                    <View>
+                                        <Text style={tw`text-xs font-bold text-green-700 mb-0.5 uppercase`}>Suggested Fare</Text>
+                                        <Text style={tw`text-3xl font-bold text-gray-900`}>₹{recommendedFare.toLocaleString('en-IN')}</Text>
+                                        <Text style={tw`text-xs text-gray-500 mt-0.5`}>{routeData.metrics.totalDistanceKm.toFixed(0)} km · ₹12/km + ₹30 base</Text>
+                                    </View>
+                                    <View style={tw`w-14 h-14 rounded-full bg-green-100 items-center justify-center`}>
+                                        <Ionicons name="pricetag" size={26} color="#16a34a" />
+                                    </View>
+                                </View>
+                                {/* Adjustment row */}
+                                <View style={tw`p-4 bg-white`}>
+                                    <Text style={tw`text-xs text-gray-400 font-semibold mb-2 uppercase`}>Adjust Amount</Text>
+                                    <View style={tw`flex-row items-center gap-2 mb-3`}>
+                                        <View style={tw`flex-1 flex-row items-center bg-gray-50 rounded-lg border border-gray-200 px-3`}>
+                                            <Text style={tw`text-gray-400 text-base mr-1`}>+₹</Text>
+                                            <TextInput
+                                                value={extraFare}
+                                                onChangeText={setExtraFare}
+                                                placeholder="0"
+                                                keyboardType="numeric"
+                                                style={tw`flex-1 text-base font-semibold text-gray-900 h-10`}
+                                            />
+                                            {extraFare !== '' && (
+                                                <TouchableOpacity onPress={() => setExtraFare('')}>
+                                                    <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                        {[50, 100, 200].map(amt => (
+                                            <TouchableOpacity
+                                                key={amt}
+                                                onPress={() => setExtraFare(String((Number(extraFare) || 0) + amt))}
+                                                style={tw`px-3 py-2 bg-gray-100 rounded-lg border border-gray-200`}
+                                            >
+                                                <Text style={tw`text-xs font-bold text-gray-700`}>+{amt}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                    <View style={tw`flex-row items-center justify-between pt-3 border-t border-gray-100`}>
+                                        <Text style={tw`text-sm text-gray-500`}>Passengers will pay</Text>
+                                        <Text style={[tw`text-2xl font-bold`, { color: theme.light.primary }]}>
+                                            ₹{(recommendedFare + (Number(extraFare) || 0)).toLocaleString('en-IN')}
+                                        </Text>
+                                    </View>
                                 </View>
                             </View>
 
@@ -405,7 +771,7 @@ export default function CreateRide() {
                                 {[
                                     { label: "Pets Allowed", icon: "paw-outline", value: petsAllowed, setter: setPetsAllowed },
                                     { label: "No Smoking", icon: "ban-outline", value: smokingAllowed, setter: setSmokingAllowed },
-                                    { label: "Max 2 Back", icon: "people-outline", value: max2Allowed, setter: setMax2Allowed },
+                                    { label: "Luggage Space", icon: "briefcase-outline", value: luggageSpace, setter: setLuggageSpace },
                                 ].map((item, idx) => (
                                     <TouchableOpacity
                                         key={idx}
@@ -436,14 +802,42 @@ export default function CreateRide() {
                                 ))}
                             </View>
 
-                            {/* Submit */}
-                            <TouchableOpacity
-                                onPress={handlePublish}
-                                disabled={isPublishing}
-                                style={[tw`py-4 rounded-xl items-center shadow-lg`, { backgroundColor: theme.light.primary }, isPublishing && tw`opacity-70`]}
-                            >
-                                {isPublishing ? <ActivityIndicator color="white" /> : <Text style={tw`text-white font-bold text-lg`}>Publish Ride</Text>}
-                            </TouchableOpacity>
+                            {/* Validation & Submit */}
+                            {(() => {
+                                const errors = [];
+                                if (vehicles.length === 0) errors.push('Register a vehicle before publishing');
+                                if (date <= new Date()) errors.push('Departure time must be in the future');
+                                const canPublish = errors.length === 0;
+                                return (
+                                    <>
+                                        {errors.length > 0 && (
+                                            <View style={tw`bg-red-50 border border-red-200 rounded-xl p-3 mb-3 gap-1`}>
+                                                {errors.map((err, i) => (
+                                                    <View key={i} style={tw`flex-row items-center gap-2`}>
+                                                        <Ionicons name="alert-circle-outline" size={14} color="#dc2626" />
+                                                        <Text style={tw`text-red-600 text-sm flex-1`}>{err}</Text>
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        )}
+                                        <TouchableOpacity
+                                            onPress={handlePublish}
+                                            disabled={isPublishing || !canPublish}
+                                            style={[
+                                                tw`py-4 rounded-xl items-center`,
+                                                canPublish
+                                                    ? [tw`shadow-lg`, { backgroundColor: theme.light.primary }]
+                                                    : tw`bg-gray-200`,
+                                                isPublishing && tw`opacity-70`,
+                                            ]}
+                                        >
+                                            {isPublishing
+                                                ? <ActivityIndicator color="white" />
+                                                : <Text style={[tw`font-bold text-lg`, { color: canPublish ? 'white' : '#9CA3AF' }]}>Publish Ride</Text>}
+                                        </TouchableOpacity>
+                                    </>
+                                );
+                            })()}
                         </ScrollView>
                     </View>
                 )}

@@ -910,6 +910,47 @@ export default function Profile() {
                 </View>
             </View>
 
+            {/* Switch to Rider */}
+            <View style={[tw`mx-4 mb-3 rounded-2xl overflow-hidden`, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}>
+                <TouchableOpacity
+                    onPress={() => {
+                        Alert.alert(
+                            "Switch to Rider",
+                            "Switch your account to rider mode?",
+                            [
+                                { text: "Cancel", style: "cancel" },
+                                {
+                                    text: "Switch",
+                                    onPress: async () => {
+                                        try {
+                                            setLoading(true);
+                                            await user.update({
+                                                unsafeMetadata: { ...user.unsafeMetadata, role: "rider" },
+                                            });
+                                            router.replace("/(rider)/search");
+                                        } catch (e) {
+                                            Alert.alert("Error", "Could not switch role.");
+                                        } finally {
+                                            setLoading(false);
+                                        }
+                                    },
+                                },
+                            ]
+                        );
+                    }}
+                    style={tw`flex-row items-center px-4 py-4`}
+                >
+                    <View style={[tw`w-10 h-10 rounded-xl items-center justify-center mr-4`, { backgroundColor: colors.primarySoft }]}>
+                        <Ionicons name="person" size={20} color={colors.primary} />
+                    </View>
+                    <View style={tw`flex-1`}>
+                        <Text style={[tw`font-semibold text-base`, { color: colors.textPrimary }]}>Switch to Rider</Text>
+                        <Text style={[tw`text-xs mt-0.5`, { color: colors.textSecondary }]}>Book rides as a passenger</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+            </View>
+
             {/* Logout Button */}
             <View style={tw`bg-white p-6 mb-6`}>
                 <TouchableOpacity

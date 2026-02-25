@@ -1,4 +1,4 @@
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Alert, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Alert, ActivityIndicator, Switch } from "react-native";
 import { useState } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,6 +28,8 @@ export default function EditVehicle() {
         year: vehicleData.year || "",
         color: vehicleData.color || "",
         licensePlate: vehicleData.licensePlate || "",
+        totalSeats: vehicleData.totalSeats || 4,
+        hasLuggageSpace: vehicleData.hasLuggageSpace || false,
         images: vehicleData.images || []
     });
 
@@ -123,7 +125,8 @@ export default function EditVehicle() {
                 });
 
                 if (!response.ok) {
-                    throw new Error('Failed to add vehicle');
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.message || 'Failed to add vehicle');
                 }
 
                 Alert.alert("Success", "Vehicle added successfully", [
@@ -140,7 +143,8 @@ export default function EditVehicle() {
                 });
 
                 if (!response.ok) {
-                    throw new Error('Failed to update vehicle');
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.message || 'Failed to update vehicle');
                 }
 
                 // Delete old images from storage if they were replaced
@@ -229,6 +233,41 @@ export default function EditVehicle() {
                         placeholder="e.g., ABC 123"
                         autoCapitalize="characters"
                     />
+
+                    <Text style={tw`text-gray-700 mb-2`}>Total Passenger Seats</Text>
+                    <Text style={tw`text-gray-400 text-xs mb-3`}>Maximum number of passengers this vehicle can carry (excluding driver)</Text>
+                    <View style={tw`flex-row items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-4`}>
+                        <TouchableOpacity
+                            onPress={() => setFormData(prev => ({ ...prev, totalSeats: Math.max(1, prev.totalSeats - 1) }))}
+                            style={tw`w-9 h-9 bg-gray-200 rounded-full items-center justify-center`}
+                        >
+                            <Ionicons name="remove" size={20} color="#374151" />
+                        </TouchableOpacity>
+                        <View style={tw`items-center`}>
+                            <Text style={tw`text-2xl font-bold text-gray-900`}>{formData.totalSeats}</Text>
+                            <Text style={tw`text-xs text-gray-400`}>seat{formData.totalSeats !== 1 ? 's' : ''}</Text>
+                        </View>
+                        <TouchableOpacity
+                            onPress={() => setFormData(prev => ({ ...prev, totalSeats: Math.min(12, prev.totalSeats + 1) }))}
+                            style={tw`w-9 h-9 bg-blue-500 rounded-full items-center justify-center`}
+                        >
+                            <Ionicons name="add" size={20} color="white" />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Luggage Space */}
+                    <View style={tw`flex-row items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-4`}>
+                        <View style={tw`flex-1`}>
+                            <Text style={tw`text-gray-700 font-medium`}>Luggage Space Available</Text>
+                            <Text style={tw`text-gray-400 text-xs mt-0.5`}>Does your vehicle have boot/trunk space for luggage?</Text>
+                        </View>
+                        <Switch
+                            value={formData.hasLuggageSpace}
+                            onValueChange={(val) => setFormData(prev => ({ ...prev, hasLuggageSpace: val }))}
+                            trackColor={{ false: "#d1d5db", true: "#86efac" }}
+                            thumbColor={formData.hasLuggageSpace ? "#16a34a" : "#f4f3f4"}
+                        />
+                    </View>
                 </View>
 
                 {/* Vehicle Images */}
