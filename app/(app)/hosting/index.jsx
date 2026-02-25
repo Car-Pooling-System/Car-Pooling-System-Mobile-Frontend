@@ -569,7 +569,7 @@ export default function CreateRide() {
                             {/* Vehicle Picker */}
                             {vehicles.length > 0 && (
                                 <>
-                                    <Text style={tw`text-xs font-bold text-gray-400 mb-2 uppercase`}>Vehicle</Text>
+                                    <Text style={tw`text-xs font-bold text-gray-400 mb-2 uppercase`}>Vehicle (Insured Only)</Text>
                                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-6`}>
                                         {vehicles.map((v, idx) => (
                                             <TouchableOpacity
