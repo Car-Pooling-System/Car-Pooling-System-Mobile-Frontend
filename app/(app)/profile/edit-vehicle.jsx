@@ -1,4 +1,4 @@
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Alert, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Alert, ActivityIndicator, Switch } from "react-native";
 import { useState } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,6 +29,7 @@ export default function EditVehicle() {
         color: vehicleData.color || "",
         licensePlate: vehicleData.licensePlate || "",
         totalSeats: vehicleData.totalSeats || 4,
+        hasLuggageSpace: vehicleData.hasLuggageSpace || false,
         images: vehicleData.images || []
     });
 
@@ -252,6 +253,20 @@ export default function EditVehicle() {
                         >
                             <Ionicons name="add" size={20} color="white" />
                         </TouchableOpacity>
+                    </View>
+
+                    {/* Luggage Space */}
+                    <View style={tw`flex-row items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-4`}>
+                        <View style={tw`flex-1`}>
+                            <Text style={tw`text-gray-700 font-medium`}>Luggage Space Available</Text>
+                            <Text style={tw`text-gray-400 text-xs mt-0.5`}>Does your vehicle have boot/trunk space for luggage?</Text>
+                        </View>
+                        <Switch
+                            value={formData.hasLuggageSpace}
+                            onValueChange={(val) => setFormData(prev => ({ ...prev, hasLuggageSpace: val }))}
+                            trackColor={{ false: "#d1d5db", true: "#86efac" }}
+                            thumbColor={formData.hasLuggageSpace ? "#16a34a" : "#f4f3f4"}
+                        />
                     </View>
                 </View>
 
