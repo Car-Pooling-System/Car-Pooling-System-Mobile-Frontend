@@ -474,20 +474,23 @@ export default function Profile() {
         }
 
         setLoading(true);
+        const digits = phoneNumber.replace(/\D/g, '');
+        console.log('[PhoneVerification] Sending OTP — raw:', phoneNumber, '| digits:', digits, '| userId:', user.id, '| BACKEND_URL:', BACKEND_URL);
         try {
-            const response = await fetch(`${BACKEND_URL}/api/phone-verification/send`, {
+            const response = await fetch(`${BACKEND_URL}/api/phone-verification/send-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: user.id,
-                    phoneNumber: phoneNumber.replace(/\D/g, '')
+                    phoneNumber: digits
                 })
             });
 
+            const responseData = await response.json().catch(() => ({}));
+            console.log('[PhoneVerification] send-otp response:', response.status, responseData);
+
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Phone verification send error:', errorText);
-                throw new Error(`Failed to send verification code: ${response.status}`);
+                throw new Error(`Failed to send verification code: ${response.status} — ${responseData.error || responseData.message || ''}`);
             }
 
             setVerificationSent(true);
@@ -507,21 +510,24 @@ export default function Profile() {
         }
 
         setVerifying(true);
+        const digits = phoneNumber.replace(/\D/g, '');
+        console.log('[PhoneVerification] Verifying OTP — digits:', digits, '| code:', verificationCode, '| userId:', user.id);
         try {
-            const response = await fetch(`${BACKEND_URL}/api/phone-verification/verify`, {
+            const response = await fetch(`${BACKEND_URL}/api/phone-verification/verify-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: user.id,
-                    phoneNumber: phoneNumber.replace(/\D/g, ''),
+                    phoneNumber: digits,
                     code: verificationCode
                 })
             });
 
+            const responseData = await response.json().catch(() => ({}));
+            console.log('[PhoneVerification] verify-otp response:', response.status, responseData);
+
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Phone verification verify error:', errorText);
-                throw new Error('Invalid verification code');
+                throw new Error(`Invalid verification code: ${responseData.message || response.status}`);
             }
 
             setPhoneModalVisible(false);
