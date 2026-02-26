@@ -464,35 +464,27 @@ export default function Profile() {
 
     const stopClipboardPolling = () => {
         if (clipboardPollRef.current) {
-            clearInterval(clipboardPollRef.current);
+            try { clipboardPollRef.current.remove(); } catch (_) {}
             clipboardPollRef.current = null;
         }
     };
 
-    const startClipboardPolling = async (onCode) => {
+    const startClipboardPolling = (onCode) => {
         stopClipboardPolling();
-        // Capture whatever is already on the clipboard so we never treat it as the OTP
-        let baseline = '';
-        try {
-            baseline = await Clipboard.getStringAsync();
-        } catch (_) {}
-        let lastSeen = baseline;
-
-        clipboardPollRef.current = setInterval(async () => {
+        // Event-based listener — fires only when clipboard content actually changes,
+        // so stale values are never triggered.
+        const subscription = Clipboard.addClipboardListener(async () => {
             try {
                 const text = await Clipboard.getStringAsync();
-                if (!text || text === lastSeen) return;
-                lastSeen = text;
-                // Only match content that is different from what was on clipboard before OTP was sent
-                if (text === baseline) return;
-                const match = text.match(/\b(\d{6})\b/);
+                const match = text?.match(/(\d{6})/);
                 if (match) {
                     stopClipboardPolling();
                     onCode(match[1]);
                 }
             } catch (_) {}
-        }, 500);
-        // Stop polling after 3 minutes
+        });
+        clipboardPollRef.current = subscription;
+        // Auto-cleanup after 3 minutes
         setTimeout(stopClipboardPolling, 180000);
     };
 
