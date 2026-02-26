@@ -8,7 +8,11 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "eslint .",
-    "test": "jest"
+    "format:check": "prettier --check .",
+    "test": "jest",
+    "test:unit": "jest",
+    "test:integration": "jest --testPathPattern=integration",
+    "test:api": "jest --testPathPattern=api"
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.20",
@@ -45,6 +49,7 @@
     "eslint": "^10.0.1",
     "jest": "^30.2.0",
     "jest-expo": "^54.0.17",
+    "prettier": "^3.4.2",
     "typescript": "~5.9.2"
   }
 }
