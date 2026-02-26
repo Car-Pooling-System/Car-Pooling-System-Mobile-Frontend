@@ -115,6 +115,22 @@ export default function VehiclesManagement() {
                         <Text style={tw`text-white font-semibold ml-1`}>Add</Text>
                     </TouchableOpacity>
                 </View>
+                {vehicles.length > 0 && (() => {
+                    const ins = vehicles.filter(v => v.insuranceVerified).length;
+                    const tot = vehicles.length;
+                    return (
+                        <View style={tw`flex-row items-center mt-2 gap-2`}>
+                            <View style={tw`bg-blue-100 px-2 py-1 rounded-full`}>
+                                <Text style={tw`text-blue-700 text-xs font-bold`}>{tot} Vehicle{tot !== 1 ? 's' : ''}</Text>
+                            </View>
+                            <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: ins === tot ? '#dcfce7' : '#fef3c7' }]}>
+                                <Text style={[tw`text-xs font-bold`, { color: ins === tot ? '#15803d' : '#92400e' }]}>
+                                    {ins}/{tot} Insured
+                                </Text>
+                            </View>
+                        </View>
+                    );
+                })()}
             </View>
 
             <ScrollView style={tw`flex-1`} contentContainerStyle={tw`p-4`}>
@@ -170,6 +186,21 @@ export default function VehiclesManagement() {
                                 <Text style={tw`font-mono font-bold text-sm`}>
                                     {vehicle.licensePlate}
                                 </Text>
+                            </View>
+
+                            {/* Insurance Status */}
+                            <View style={tw`flex-row items-center mb-3`}>
+                                {vehicle.insuranceVerified ? (
+                                    <View style={tw`flex-row items-center gap-1 bg-green-50 px-3 py-1 rounded-full border border-green-200`}>
+                                        <Ionicons name="shield-checkmark" size={12} color="#10b981" />
+                                        <Text style={tw`text-green-700 text-xs font-semibold`}>Insurance Verified</Text>
+                                    </View>
+                                ) : (
+                                    <View style={tw`flex-row items-center gap-1 bg-amber-50 px-3 py-1 rounded-full border border-amber-200`}>
+                                        <Ionicons name="shield-outline" size={12} color="#92400e" />
+                                        <Text style={tw`text-amber-700 text-xs font-semibold`}>No Insurance</Text>
+                                    </View>
+                                )}
                             </View>
 
                             {/* Vehicle Images */}

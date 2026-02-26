@@ -42,7 +42,7 @@ export default function EditPhoneNumber() {
 
         setLoading(true);
         try {
-            const response = await fetch(`${BACKEND_URL}/api/phone-verification/send`, {
+            const response = await fetch(`${BACKEND_URL}/api/phone-verification/send-otp`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -75,7 +75,7 @@ export default function EditPhoneNumber() {
 
         setVerifying(true);
         try {
-            const response = await fetch(`${BACKEND_URL}/api/phone-verification/verify`, {
+            const response = await fetch(`${BACKEND_URL}/api/phone-verification/verify-otp`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

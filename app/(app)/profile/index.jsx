@@ -34,6 +34,8 @@ export default function Profile() {
     const [verificationCode, setVerificationCode] = useState("");
     const [verificationSent, setVerificationSent] = useState(false);
     const [verifying, setVerifying] = useState(false);
+    const [aadharVerifying, setAadharVerifying] = useState(false);
+    const [licenseVerifying, setLicenseVerifying] = useState(false);
 
     const fetchDriverData = async () => {
         if (!user?.id) {
@@ -390,6 +392,62 @@ export default function Profile() {
         );
     };
 
+    const handleMockVerifyAadhar = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: '*/*',
+                copyToCacheDirectory: false,
+            });
+            if (result.canceled || !result.assets?.length) return;
+
+            setAadharVerifying(true);
+            // Mock: 1.5 s simulated verification — always passes
+            await new Promise(r => setTimeout(r, 1500));
+
+            const res = await fetch(`${BACKEND_URL}/api/driver-verification/${user.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ aadharVerified: true }),
+            });
+            if (res.ok) {
+                await fetchDriverData();
+                Alert.alert('Aadhaar Verified ✓', 'Your Aadhaar has been verified successfully!');
+            }
+        } catch (e) {
+            Alert.alert('Error', 'Verification failed. Please try again.');
+        } finally {
+            setAadharVerifying(false);
+        }
+    };
+
+    const handleMockVerifyLicense = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: '*/*',
+                copyToCacheDirectory: false,
+            });
+            if (result.canceled || !result.assets?.length) return;
+
+            setLicenseVerifying(true);
+            // Mock: 1.5 s simulated verification — always passes
+            await new Promise(r => setTimeout(r, 1500));
+
+            const res = await fetch(`${BACKEND_URL}/api/driver-verification/${user.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ drivingLicenseVerified: true }),
+            });
+            if (res.ok) {
+                await fetchDriverData();
+                Alert.alert('License Verified ✓', 'Your driving license has been verified successfully!');
+            }
+        } catch (e) {
+            Alert.alert('Error', 'Verification failed. Please try again.');
+        } finally {
+            setLicenseVerifying(false);
+        }
+    };
+
     const handlePhoneEdit = () => {
         setPhoneNumber(driverData?.phoneNumber || "");
         setVerificationSent(false);
@@ -416,20 +474,23 @@ export default function Profile() {
         }
 
         setLoading(true);
+        const digits = phoneNumber.replace(/\D/g, '');
+        console.log('[PhoneVerification] Sending OTP — raw:', phoneNumber, '| digits:', digits, '| userId:', user.id, '| BACKEND_URL:', BACKEND_URL);
         try {
-            const response = await fetch(`${BACKEND_URL}/api/phone-verification/send`, {
+            const response = await fetch(`${BACKEND_URL}/api/phone-verification/send-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: user.id,
-                    phoneNumber: phoneNumber.replace(/\D/g, '')
+                    phoneNumber: digits
                 })
             });
 
+            const responseData = await response.json().catch(() => ({}));
+            console.log('[PhoneVerification] send-otp response:', response.status, responseData);
+
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Phone verification send error:', errorText);
-                throw new Error(`Failed to send verification code: ${response.status}`);
+                throw new Error(`Failed to send verification code: ${response.status} — ${responseData.error || responseData.message || ''}`);
             }
 
             setVerificationSent(true);
@@ -449,21 +510,24 @@ export default function Profile() {
         }
 
         setVerifying(true);
+        const digits = phoneNumber.replace(/\D/g, '');
+        console.log('[PhoneVerification] Verifying OTP — digits:', digits, '| code:', verificationCode, '| userId:', user.id);
         try {
-            const response = await fetch(`${BACKEND_URL}/api/phone-verification/verify`, {
+            const response = await fetch(`${BACKEND_URL}/api/phone-verification/verify-otp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: user.id,
-                    phoneNumber: phoneNumber.replace(/\D/g, ''),
+                    phoneNumber: digits,
                     code: verificationCode
                 })
             });
 
+            const responseData = await response.json().catch(() => ({}));
+            console.log('[PhoneVerification] verify-otp response:', response.status, responseData);
+
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Phone verification verify error:', errorText);
-                throw new Error('Invalid verification code');
+                throw new Error(`Invalid verification code: ${responseData.message || response.status}`);
             }
 
             setPhoneModalVisible(false);
@@ -494,24 +558,24 @@ export default function Profile() {
 
     if (loading) {
         return (
-            <View style={tw`flex-1 justify-center items-center bg-white`}>
-                <ActivityIndicator size="large" color="#000" />
-                <Text style={tw`mt-4 text-gray-500`}>Loading profile...</Text>
+            <View style={[tw`flex-1 justify-center items-center`, { backgroundColor: colors.background }]}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={[tw`mt-4`, { color: colors.textSecondary }]}>Loading profile...</Text>
             </View>
         );
     }
 
     return (
         <ScrollView
-            style={tw`flex-1 bg-gray-50`}
+            style={[tw`flex-1`, { backgroundColor: colors.background }]}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
             {/* Loading Overlay */}
             {uploading && (
                 <View style={tw`absolute top-0 left-0 right-0 bottom-0 bg-black bg-opacity-50 z-50 justify-center items-center`}>
-                    <View style={tw`bg-white p-6 rounded-xl items-center`}>
-                        <ActivityIndicator size="large" color="#007AFF" />
-                        <Text style={tw`mt-4 text-gray-600`}>Processing...</Text>
+                    <View style={[tw`p-6 rounded-xl items-center`, { backgroundColor: colors.surface }]}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                        <Text style={[tw`mt-4`, { color: colors.textSecondary }]}>Processing...</Text>
                     </View>
                 </View>
             )}
@@ -544,7 +608,7 @@ export default function Profile() {
                         <TouchableOpacity
                             onPress={pickProfileImage}
                             disabled={uploading}
-                            style={tw`mt-6 bg-blue-500 px-8 py-4 rounded-full flex-row items-center`}
+                            style={[tw`mt-6 px-8 py-4 rounded-full flex-row items-center`, { backgroundColor: colors.primary }]}
                         >
                             {uploading ? (
                                 <ActivityIndicator size="small" color="white" />
@@ -570,21 +634,21 @@ export default function Profile() {
                     style={tw`flex-1 bg-black bg-opacity-50 justify-center items-center`}
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 >
-                    <View style={tw`bg-white rounded-2xl p-6 w-11/12 max-w-md`}>
+                    <View style={[tw`rounded-2xl p-6 w-11/12 max-w-md`, { backgroundColor: colors.surface }]}>
                         <View style={tw`flex-row items-center justify-between mb-4`}>
-                            <Text style={tw`text-xl font-bold`}>Edit Phone Number</Text>
+                            <Text style={[tw`text-xl font-bold`, { color: colors.textPrimary }]}>Edit Phone Number</Text>
                             <TouchableOpacity onPress={() => setPhoneModalVisible(false)}>
-                                <Ionicons name="close" size={24} color="#000" />
+                                <Ionicons name="close" size={24} color={colors.textPrimary} />
                             </TouchableOpacity>
                         </View>
 
                         {!verificationSent ? (
                             <>
-                                <Text style={tw`text-gray-600 mb-4`}>Enter your phone number to receive a verification code</Text>
-                                <View style={tw`flex-row items-center bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-4`}>
-                                    <Text style={tw`text-lg font-semibold text-gray-700 mr-2`}>+1</Text>
+                                <Text style={[tw`mb-4`, { color: colors.textSecondary }]}>Enter your phone number to receive a verification code</Text>
+                                <View style={[tw`flex-row items-center rounded-lg px-4 py-3 mb-4 border`, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}>
+                                    <Text style={[tw`text-lg font-semibold mr-2`, { color: colors.textPrimary }]}>+91</Text>
                                     <TextInput
-                                        style={tw`flex-1 text-lg`}
+                                        style={[tw`flex-1 text-lg`, { color: colors.textPrimary }]}
                                         value={phoneNumber}
                                         onChangeText={(text) => setPhoneNumber(formatPhoneNumber(text))}
                                         placeholder="234 567 8900"
@@ -595,7 +659,7 @@ export default function Profile() {
                                 <TouchableOpacity
                                     onPress={sendVerificationCode}
                                     disabled={loading}
-                                    style={tw`bg-blue-500 py-4 rounded-lg flex-row items-center justify-center`}
+                                    style={[tw`py-4 rounded-lg flex-row items-center justify-center`, { backgroundColor: colors.primary }]}
                                 >
                                     {loading ? (
                                         <ActivityIndicator size="small" color="white" />
@@ -609,11 +673,11 @@ export default function Profile() {
                             </>
                         ) : (
                             <>
-                                <Text style={tw`text-gray-600 mb-4 text-center`}>
+                                <Text style={[tw`mb-4 text-center`, { color: colors.textSecondary }]}>
                                     Enter the verification code sent to {phoneNumber}
                                 </Text>
                                 <TextInput
-                                    style={tw`bg-gray-50 border border-gray-200 rounded-lg px-4 py-4 text-center text-2xl font-bold tracking-widest mb-4`}
+                                    style={[tw`rounded-lg px-4 py-4 text-center text-2xl font-bold tracking-widest mb-4 border`, { backgroundColor: colors.surfaceMuted, borderColor: colors.border, color: colors.textPrimary }]}
                                     value={verificationCode}
                                     onChangeText={setVerificationCode}
                                     placeholder="••••••"
@@ -624,7 +688,7 @@ export default function Profile() {
                                 <TouchableOpacity
                                     onPress={verifyCode}
                                     disabled={verifying}
-                                    style={tw`bg-green-500 py-4 rounded-lg flex-row items-center justify-center mb-3`}
+                                    style={[tw`py-4 rounded-lg flex-row items-center justify-center mb-3`, { backgroundColor: colors.success }]}
                                 >
                                     {verifying ? (
                                         <ActivityIndicator size="small" color="white" />
@@ -642,7 +706,7 @@ export default function Profile() {
                                     }}
                                     style={tw`items-center py-2`}
                                 >
-                                    <Text style={tw`text-blue-500 font-semibold`}>Resend Code</Text>
+                                    <Text style={[tw`font-semibold`, { color: colors.primary }]}>Resend Code</Text>
                                 </TouchableOpacity>
                             </>
                         )}
@@ -674,16 +738,16 @@ export default function Profile() {
             </Modal>
 
             {/* Profile Section - Bigger and Centered */}
-            <View style={tw`bg-white p-6 mb-3`}>
+            <View style={[tw`p-6 mb-3`, { backgroundColor: colors.surface }]}>
                 <View style={tw`flex-row items-center justify-between mb-6`}>
-                    <Text style={tw`text-2xl font-bold`}>Profile</Text>
+                    <Text style={[tw`text-2xl font-bold`, { color: colors.textPrimary }]}>Profile</Text>
                     <View style={tw`flex-row gap-2`}>
                         {editMode ? (
                             <>
                                 <TouchableOpacity
                                     onPress={handleSave}
                                     disabled={loading}
-                                    style={tw`bg-green-500 px-4 py-2 rounded-lg flex-row items-center`}
+                                    style={[tw`px-4 py-2 rounded-lg flex-row items-center`, { backgroundColor: colors.success }]}
                                 >
                                     {loading ? (
                                         <ActivityIndicator size="small" color="white" />
@@ -696,16 +760,16 @@ export default function Profile() {
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     onPress={handleEditToggle}
-                                    style={tw`bg-gray-500 px-4 py-2 rounded-lg flex-row items-center`}
+                                    style={[tw`px-4 py-2 rounded-lg flex-row items-center border`, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}
                                 >
-                                    <Ionicons name="close" size={18} color="white" />
-                                    <Text style={tw`text-white font-semibold ml-1`}>Cancel</Text>
+                                    <Ionicons name="close" size={18} color={colors.textPrimary} />
+                                    <Text style={[tw`font-semibold ml-1`, { color: colors.textPrimary }]}>Cancel</Text>
                                 </TouchableOpacity>
                             </>
                         ) : (
                             <TouchableOpacity
                                 onPress={handleEditToggle}
-                                style={tw`bg-blue-500 px-4 py-2 rounded-lg flex-row items-center`}
+                                style={[tw`px-4 py-2 rounded-lg flex-row items-center`, { backgroundColor: colors.primary }]}
                             >
                                 <Ionicons name="create-outline" size={18} color="white" />
                                 <Text style={tw`text-white font-semibold ml-1`}>Edit</Text>
@@ -721,22 +785,22 @@ export default function Profile() {
                             {user?.imageUrl || driverData?.profileImage ? (
                                 <Image
                                     source={{ uri: driverData?.profileImage || user?.imageUrl }}
-                                    style={tw`w-32 h-32 rounded-full bg-gray-200`}
+                                    style={[tw`w-32 h-32 rounded-full`, { backgroundColor: colors.surfaceMuted }]}
                                 />
                             ) : (
-                                <View style={tw`w-32 h-32 rounded-full bg-gray-300 justify-center items-center`}>
-                                    <Ionicons name="person" size={64} color="#666" />
+                                <View style={[tw`w-32 h-32 rounded-full justify-center items-center`, { backgroundColor: colors.surfaceMuted }]}>
+                                    <Ionicons name="person" size={64} color={colors.textMuted} />
                                 </View>
                             )}
-                            <View style={tw`absolute bottom-0 right-0 bg-blue-500 rounded-full p-2`}>
+                            <View style={[tw`absolute bottom-0 right-0 rounded-full p-2`, { backgroundColor: colors.primary }]}>
                                 <Ionicons name="camera" size={20} color="white" />
                             </View>
                         </View>
                     </TouchableOpacity>
-                    <Text style={tw`text-2xl font-bold mt-4`}>
+                    <Text style={[tw`text-2xl font-bold mt-4`, { color: colors.textPrimary }]}>
                         {user?.firstName || "Driver"} {user?.lastName || ""}
                     </Text>
-                    <Text style={tw`text-gray-600 text-sm mt-1`}>
+                    <Text style={[tw`text-sm mt-1`, { color: colors.textSecondary }]}>
                         {user?.primaryEmailAddress?.emailAddress}
                     </Text>
                     {driverData?.phoneNumber ? (
@@ -744,64 +808,74 @@ export default function Profile() {
                             style={tw`flex-row items-center mt-2`}
                             onPress={handlePhoneEdit}
                         >
-                            <Ionicons name="call" size={16} color="#666" />
-                            <Text style={tw`text-gray-600 ml-1 mr-2`}>
+                            <Ionicons name="call" size={16} color={colors.textSecondary} />
+                            <Text style={[tw`ml-1 mr-2`, { color: colors.textSecondary }]}>
                                 {driverData.phoneNumber}
                             </Text>
-                            <Ionicons name="create-outline" size={16} color="#3b82f6" />
+                            <Ionicons name="create-outline" size={16} color={colors.primary} />
                         </TouchableOpacity>
                     ) : (
                         <TouchableOpacity
                             style={tw`flex-row items-center mt-2`}
                             onPress={handlePhoneEdit}
                         >
-                            <Ionicons name="add-circle-outline" size={16} color="#3b82f6" />
-                            <Text style={tw`text-blue-500 ml-1`}>Add phone number</Text>
+                            <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
+                            <Text style={[tw`ml-1`, { color: colors.primary }]}>Add phone number</Text>
                         </TouchableOpacity>
                     )}
                 </View>
             </View>
 
             {/* Statistics */}
-            <View style={tw`bg-white p-6 mb-3`}>
-                <Text style={tw`text-xl font-bold mb-4`}>Statistics</Text>
+            <View style={[tw`p-6 mb-3`, { backgroundColor: colors.surface }]}>
+                <Text style={[tw`text-xl font-bold mb-4`, { color: colors.textPrimary }]}>Statistics</Text>
                 <View style={tw`flex-row justify-between`}>
-                    <View style={tw`items-center flex-1 bg-blue-50 p-4 rounded-xl mr-2`}>
-                        <Text style={tw`text-3xl font-bold text-blue-600`}>
+                    <View style={[tw`items-center flex-1 p-4 rounded-xl mr-2`, { backgroundColor: colors.primarySoft }]}>
+                        <Text style={[tw`text-3xl font-bold`, { color: colors.primary }]}>
                             {driverData?.rides?.completed || 0}
                         </Text>
-                        <Text style={tw`text-gray-600 text-sm mt-1`}>Completed</Text>
+                        <Text style={[tw`text-sm mt-1`, { color: colors.textSecondary }]}>Completed</Text>
                     </View>
-                    <View style={tw`items-center flex-1 bg-green-50 p-4 rounded-xl mx-1`}>
-                        <Text style={tw`text-3xl font-bold text-green-600`}>
+                    <View style={[tw`items-center flex-1 p-4 rounded-xl mx-1`, { backgroundColor: colors.successSoft }]}>
+                        <Text style={[tw`text-3xl font-bold`, { color: colors.success }]}>
                             {driverData?.rating?.average?.toFixed(1) || "0.0"}
                         </Text>
-                        <Text style={tw`text-gray-600 text-sm mt-1`}>Rating</Text>
+                        <Text style={[tw`text-sm mt-1`, { color: colors.textSecondary }]}>Rating</Text>
                     </View>
-                    <View style={tw`items-center flex-1 bg-purple-50 p-4 rounded-xl ml-2`}>
-                        <Text style={tw`text-3xl font-bold text-purple-600`}>
+                    <View style={[tw`items-center flex-1 p-4 rounded-xl ml-2`, { backgroundColor: colors.surfaceMuted }]}>
+                        <Text style={[tw`text-3xl font-bold`, { color: colors.textPrimary }]}>
                             {driverData?.distanceDrivenKm || 0}
                         </Text>
-                        <Text style={tw`text-gray-600 text-sm mt-1`}>km</Text>
+                        <Text style={[tw`text-sm mt-1`, { color: colors.textSecondary }]}>km</Text>
                     </View>
                 </View>
             </View>
 
             {/* Vehicle Information */}
-            <View style={tw`bg-white p-6 mb-3`}>
+            <View style={[tw`p-6 mb-3`, { backgroundColor: colors.surface }]}>
                 <View style={tw`flex-row items-center justify-between mb-4`}>
                     <View style={tw`flex-row items-center`}>
-                        <Ionicons name="car-sport" size={24} color="#000" />
-                        <Text style={tw`text-xl font-bold ml-2`}>My Vehicles</Text>
+                        <Ionicons name="car-sport" size={24} color={colors.textPrimary} />
+                        <Text style={[tw`text-xl font-bold ml-2`, { color: colors.textPrimary }]}>My Vehicles</Text>
                         {driverData?.vehicles && driverData.vehicles.length > 0 && (
-                            <View style={tw`ml-2 bg-blue-500 px-2 py-1 rounded-full`}>
-                                <Text style={tw`text-white text-xs font-bold`}>{driverData.vehicles.length}</Text>
+                            <View style={tw`ml-2 flex-row items-center gap-1`}>
+                                {(() => {
+                                    const ins = driverData.vehicles.filter(v => v.insuranceVerified).length;
+                                    const tot = driverData.vehicles.length;
+                                    return (
+                                        <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: ins === tot ? colors.successSoft : '#fef3c7' }]}>
+                                            <Text style={[tw`text-xs font-bold`, { color: ins === tot ? colors.success : '#92400e' }]}>
+                                                {ins}/{tot} Insured
+                                            </Text>
+                                        </View>
+                                    );
+                                })()}
                             </View>
                         )}
                     </View>
                     <TouchableOpacity
                         onPress={() => router.push("/profile/vehicles")}
-                        style={tw`bg-blue-500 px-4 py-2 rounded-lg flex-row items-center`}
+                        style={[tw`px-4 py-2 rounded-lg flex-row items-center`, { backgroundColor: colors.primary }]}
                     >
                         <Ionicons name="settings-outline" size={16} color="white" />
                         <Text style={tw`text-white font-semibold ml-2`}>Manage</Text>
@@ -815,28 +889,28 @@ export default function Profile() {
                                 <TouchableOpacity
                                     key={index}
                                     onPress={() => router.push("/profile/vehicles")}
-                                    style={tw`mx-2 bg-gray-50 rounded-xl overflow-hidden w-64`}
+                                    style={[tw`mx-2 rounded-xl overflow-hidden w-64 border`, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}
                                 >
                                     {vehicle.images && vehicle.images.length > 0 ? (
                                         <Image
                                             source={{ uri: vehicle.images[0] }}
-                                            style={tw`w-full h-40 bg-gray-200`}
+                                            style={[tw`w-full h-40`, { backgroundColor: colors.surfaceMuted }]}
                                             resizeMode="cover"
                                         />
                                     ) : (
-                                        <View style={tw`w-full h-40 bg-gray-200 items-center justify-center`}>
-                                            <Ionicons name="car-sport-outline" size={48} color="#9CA3AF" />
+                                        <View style={[tw`w-full h-40 items-center justify-center`, { backgroundColor: colors.surfaceMuted }]}>
+                                            <Ionicons name="car-sport-outline" size={48} color={colors.textMuted} />
                                         </View>
                                     )}
                                     <View style={tw`p-4`}>
-                                        <Text style={tw`font-bold text-lg`}>
+                                        <Text style={[tw`font-bold text-lg`, { color: colors.textPrimary }]}>
                                             {vehicle.brand} {vehicle.model}
                                         </Text>
-                                        <Text style={tw`text-gray-500 text-sm mt-1`}>
+                                        <Text style={[tw`text-sm mt-1`, { color: colors.textSecondary }]}>
                                             {vehicle.year} • {vehicle.color}
                                         </Text>
-                                        <View style={tw`bg-gray-100 px-3 py-1 rounded-lg mt-2 self-start`}>
-                                            <Text style={tw`font-mono font-bold text-xs`}>
+                                        <View style={[tw`px-3 py-1 rounded-lg mt-2 self-start`, { backgroundColor: colors.border }]}>
+                                            <Text style={[tw`font-mono font-bold text-xs`, { color: colors.textPrimary }]}>
                                                 {vehicle.licensePlate}
                                             </Text>
                                         </View>
@@ -848,11 +922,11 @@ export default function Profile() {
                 ) : (
                     <TouchableOpacity
                         onPress={() => router.push("/profile/vehicles")}
-                        style={tw`bg-gray-50 p-6 rounded-xl items-center border-2 border-dashed border-gray-300`}
+                        style={[tw`p-6 rounded-xl items-center border-2 border-dashed`, { borderColor: colors.border }]}
                     >
-                        <Ionicons name="car-sport-outline" size={48} color="#9CA3AF" />
-                        <Text style={tw`text-gray-600 mt-3 font-semibold`}>No vehicles added yet</Text>
-                        <Text style={tw`text-gray-400 text-sm mt-1 text-center`}>
+                        <Ionicons name="car-sport-outline" size={48} color={colors.textMuted} />
+                        <Text style={[tw`mt-3 font-semibold`, { color: colors.textSecondary }]}>No vehicles added yet</Text>
+                        <Text style={[tw`text-sm mt-1 text-center`, { color: colors.textMuted }]}>
                             Tap to add your first vehicle
                         </Text>
                     </TouchableOpacity>
@@ -860,53 +934,68 @@ export default function Profile() {
             </View>
 
             {/* Verification Status */}
-            <View style={tw`bg-white p-6 mb-3`}>
+            <View style={[tw`p-6 mb-3`, { backgroundColor: colors.surface }]}>
                 <View style={tw`flex-row items-center mb-4`}>
-                    <Ionicons name="shield-checkmark" size={24} color="#000" />
-                    <Text style={tw`text-xl font-bold ml-2`}>Verification Status</Text>
+                    <Ionicons name="shield-checkmark" size={24} color={colors.textPrimary} />
+                    <Text style={[tw`text-xl font-bold ml-2`, { color: colors.textPrimary }]}>Verification Status</Text>
                 </View>
-                <View style={tw`bg-gray-50 p-4 rounded-xl`}>
-                    <VerificationRow
-                        label="Email"
-                        verified={true}
-                    />
-                    <VerificationRow
-                        label="Phone"
-                        verified={driverData?.verification?.phoneVerified}
-                    />
-                    <VerificationRow
-                        label="Driving License"
-                        verified={driverData?.verification?.drivingLicenseVerified}
-                    />
-                    <VerificationRow
-                        label="Vehicle"
-                        verified={driverData?.verification?.vehicleVerified}
-                    />
-                </View>
-            </View>
+                <View style={[tw`p-4 rounded-xl`, { backgroundColor: colors.surfaceMuted }]}>
+                    <VerificationRow label="Email" verified={true} colors={colors} />
+                    <VerificationRow label="Phone" verified={driverData?.verification?.phoneVerified} colors={colors} />
 
-            {/* Documents */}
-            <View style={tw`bg-white p-6 mb-6`}>
-                <View style={tw`flex-row items-center mb-4`}>
-                    <Ionicons name="document-text" size={24} color="#000" />
-                    <Text style={tw`text-xl font-bold ml-2`}>Documents</Text>
-                </View>
-                <View style={tw`bg-gray-50 p-4 rounded-xl`}>
-                    <TouchableDocumentRow
-                        label="Driving License"
-                        url={driverData?.documents?.drivingLicense}
-                        onPress={() => handleDocumentPress('drivingLicense', driverData?.documents?.drivingLicense)}
-                    />
-                    <TouchableDocumentRow
-                        label="Vehicle Registration"
-                        url={driverData?.documents?.vehicleRegistration}
-                        onPress={() => handleDocumentPress('vehicleRegistration', driverData?.documents?.vehicleRegistration)}
-                    />
-                    <TouchableDocumentRow
-                        label="Insurance"
-                        url={driverData?.documents?.insurance}
-                        onPress={() => handleDocumentPress('insurance', driverData?.documents?.insurance)}
-                    />
+                    {/* Aadhaar */}
+                    <View style={[tw`flex-row justify-between items-center py-3 border-b`, { borderColor: colors.border }]}>
+                        <View>
+                            <Text style={[tw`text-sm font-medium`, { color: colors.textPrimary }]}>Aadhaar</Text>
+                            <Text style={[tw`text-xs`, { color: colors.textMuted }]}>Government ID document</Text>
+                        </View>
+                        {driverData?.verification?.aadharVerified ? (
+                            <View style={[tw`flex-row items-center gap-1 px-3 py-1 rounded-full`, { backgroundColor: colors.successSoft }]}>
+                                <Ionicons name="checkmark-circle" size={12} color={colors.success} />
+                                <Text style={[tw`text-xs font-semibold`, { color: colors.success }]}>Verified</Text>
+                            </View>
+                        ) : aadharVerifying ? (
+                            <View style={tw`flex-row items-center gap-2`}>
+                                <ActivityIndicator size="small" color={colors.primary} />
+                                <Text style={[tw`text-xs`, { color: colors.textSecondary }]}>Verifying...</Text>
+                            </View>
+                        ) : (
+                            <TouchableOpacity
+                                onPress={handleMockVerifyAadhar}
+                                style={[tw`px-3 py-1.5 rounded-lg flex-row items-center gap-1`, { backgroundColor: colors.primary }]}
+                            >
+                                <Ionicons name="cloud-upload-outline" size={12} color="white" />
+                                <Text style={tw`text-white text-xs font-semibold`}>Upload & Verify</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    {/* Driving License */}
+                    <View style={[tw`flex-row justify-between items-center py-3`, { borderColor: colors.border }]}>
+                        <View>
+                            <Text style={[tw`text-sm font-medium`, { color: colors.textPrimary }]}>Driving License</Text>
+                            <Text style={[tw`text-xs`, { color: colors.textMuted }]}>Driver's license document</Text>
+                        </View>
+                        {driverData?.verification?.drivingLicenseVerified ? (
+                            <View style={[tw`flex-row items-center gap-1 px-3 py-1 rounded-full`, { backgroundColor: colors.successSoft }]}>
+                                <Ionicons name="checkmark-circle" size={12} color={colors.success} />
+                                <Text style={[tw`text-xs font-semibold`, { color: colors.success }]}>Verified</Text>
+                            </View>
+                        ) : licenseVerifying ? (
+                            <View style={tw`flex-row items-center gap-2`}>
+                                <ActivityIndicator size="small" color={colors.primary} />
+                                <Text style={[tw`text-xs`, { color: colors.textSecondary }]}>Verifying...</Text>
+                            </View>
+                        ) : (
+                            <TouchableOpacity
+                                onPress={handleMockVerifyLicense}
+                                style={[tw`px-3 py-1.5 rounded-lg flex-row items-center gap-1`, { backgroundColor: colors.primary }]}
+                            >
+                                <Ionicons name="cloud-upload-outline" size={12} color="white" />
+                                <Text style={tw`text-white text-xs font-semibold`}>Upload & Verify</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
             </View>
 
@@ -952,7 +1041,7 @@ export default function Profile() {
             </View>
 
             {/* Logout Button */}
-            <View style={tw`bg-white p-6 mb-6`}>
+            <View style={[tw`p-6 mb-6`, { backgroundColor: colors.surface }]}>
                 <TouchableOpacity
                     onPress={() => {
                         Alert.alert(
@@ -1019,44 +1108,15 @@ function EditableField({ label, value, onChangeText, keyboardType = "default", a
     );
 }
 
-function VerificationRow({ label, verified }) {
+function VerificationRow({ label, verified, colors = {} }) {
     return (
-        <View style={tw`flex-row justify-between items-center py-2 border-b border-gray-200`}>
-            <Text style={tw`text-gray-700`}>{label}</Text>
-            <View
-                style={tw`px-3 py-1 rounded-full ${verified ? "bg-green-100" : "bg-red-100"
-                    }`}
-            >
-                <Text
-                    style={tw`text-xs font-semibold ${verified ? "text-green-700" : "text-red-700"
-                        }`}
-                >
+        <View style={[tw`flex-row justify-between items-center py-2 border-b`, { borderColor: colors.border || '#e0e0e0' }]}>
+            <Text style={[tw`text-sm`, { color: colors.textPrimary || '#111' }]}>{label}</Text>
+            <View style={[tw`px-3 py-1 rounded-full`, { backgroundColor: verified ? (colors.successSoft || '#dcfce7') : (colors.dangerSoft || '#fee2e2') }]}>
+                <Text style={[tw`text-xs font-semibold`, { color: verified ? (colors.success || '#078829') : (colors.danger || '#e72a08') }]}>
                     {verified ? "Verified" : "Not Verified"}
                 </Text>
             </View>
         </View>
-    );
-}
-
-function TouchableDocumentRow({ label, url, onPress }) {
-    return (
-        <TouchableOpacity
-            style={tw`flex-row justify-between items-center py-3 border-b border-gray-200`}
-            onPress={onPress}
-        >
-            <Text style={tw`text-gray-700 flex-1`}>{label}</Text>
-            {url ? (
-                <View style={tw`flex-row items-center`}>
-                    <Ionicons name="checkmark-circle" size={16} color="#10b981" />
-                    <Text style={tw`text-blue-500 text-sm ml-1 mr-2`}>Uploaded</Text>
-                    <Ionicons name="chevron-forward" size={18} color="#3b82f6" />
-                </View>
-            ) : (
-                <View style={tw`flex-row items-center`}>
-                    <Text style={tw`text-gray-400 text-sm mr-2`}>Tap to upload</Text>
-                    <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-                </View>
-            )}
-        </TouchableOpacity>
     );
 }
