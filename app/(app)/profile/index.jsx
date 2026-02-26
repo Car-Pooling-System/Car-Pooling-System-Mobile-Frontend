@@ -1,6 +1,7 @@
 import { View, Text, ScrollView, Image, ActivityIndicator, RefreshControl, TouchableOpacity, useColorScheme, Alert, TextInput, Linking, Modal, KeyboardAvoidingView, Platform } from "react-native";
 import { useUser, useAuth } from "@clerk/clerk-expo";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -34,6 +35,10 @@ export default function Profile() {
     const [verificationCode, setVerificationCode] = useState("");
     const [verificationSent, setVerificationSent] = useState(false);
     const [verifying, setVerifying] = useState(false);
+    const [sendingOtp, setSendingOtp] = useState(false);
+    const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
+    const otpInputRefs = useRef([]);
+    const clipboardPollRef = useRef(null);
     const [aadharVerifying, setAadharVerifying] = useState(false);
     const [licenseVerifying, setLicenseVerifying] = useState(false);
 
@@ -452,7 +457,34 @@ export default function Profile() {
         setPhoneNumber(driverData?.phoneNumber || "");
         setVerificationSent(false);
         setVerificationCode("");
+        setOtpDigits(['', '', '', '', '', '']);
         setPhoneModalVisible(true);
+    };
+
+    const stopClipboardPolling = () => {
+        if (clipboardPollRef.current) {
+            clearInterval(clipboardPollRef.current);
+            clipboardPollRef.current = null;
+        }
+    };
+
+    const startClipboardPolling = (onCode) => {
+        stopClipboardPolling();
+        let lastSeen = '';
+        clipboardPollRef.current = setInterval(async () => {
+            try {
+                const text = await Clipboard.getStringAsync();
+                if (text === lastSeen) return;
+                lastSeen = text;
+                const match = text.match(/\b(\d{6})\b/);
+                if (match) {
+                    stopClipboardPolling();
+                    onCode(match[1]);
+                }
+            } catch (_) {}
+        }, 500);
+        // Stop polling after 3 minutes
+        setTimeout(stopClipboardPolling, 180000);
     };
 
     const formatPhoneNumber = (text) => {
@@ -473,7 +505,7 @@ export default function Profile() {
             return;
         }
 
-        setLoading(true);
+        setSendingOtp(true);
         const digits = phoneNumber.replace(/\D/g, '');
         console.log('[PhoneVerification] Sending OTP — raw:', phoneNumber, '| digits:', digits, '| userId:', user.id, '| BACKEND_URL:', BACKEND_URL);
         try {
@@ -494,24 +526,32 @@ export default function Profile() {
             }
 
             setVerificationSent(true);
-            Alert.alert("Success", "Verification code sent to your phone");
+            setOtpDigits(['', '', '', '', '', '']);
+            setTimeout(() => otpInputRefs.current[0]?.focus(), 300);
+            // Start polling clipboard for auto-read
+            startClipboardPolling((code) => {
+                const digits = code.split('');
+                setOtpDigits(digits);
+                verifyCode(code);
+            });
         } catch (error) {
             console.error("Error sending verification code:", error);
             Alert.alert("Error", "Failed to send verification code. Please try again.");
         } finally {
-            setLoading(false);
+            setSendingOtp(false);
         }
     };
 
-    const verifyCode = async () => {
-        if (!verificationCode || verificationCode.length < 4) {
-            Alert.alert("Error", "Please enter the verification code");
+    const verifyCode = async (codeOverride) => {
+        const code = codeOverride || otpDigits.join('');
+        if (!code || code.length < 6) {
+            Alert.alert("Error", "Please enter all 6 digits");
             return;
         }
 
         setVerifying(true);
         const digits = phoneNumber.replace(/\D/g, '');
-        console.log('[PhoneVerification] Verifying OTP — digits:', digits, '| code:', verificationCode, '| userId:', user.id);
+        console.log('[PhoneVerification] Verifying OTP — digits:', digits, '| code:', code, '| userId:', user.id);
         try {
             const response = await fetch(`${BACKEND_URL}/api/phone-verification/verify-otp`, {
                 method: 'POST',
@@ -519,7 +559,7 @@ export default function Profile() {
                 body: JSON.stringify({
                     userId: user.id,
                     phoneNumber: digits,
-                    code: verificationCode
+                    code
                 })
             });
 
@@ -531,6 +571,8 @@ export default function Profile() {
             }
 
             setPhoneModalVisible(false);
+            setOtpDigits(['', '', '', '', '', '']);
+            stopClipboardPolling();
             Alert.alert("Success", "Phone number updated and verified!");
             await fetchDriverData();
         } catch (error) {
@@ -540,6 +582,37 @@ export default function Profile() {
             setVerifying(false);
         }
     };
+
+    const handleOtpChange = (text, index) => {
+        const cleaned = text.replace(/\D/g, '');
+        // Handle paste / SMS autofill of full OTP
+        if (cleaned.length > 1) {
+            const newOtp = ['', '', '', '', '', ''];
+            cleaned.slice(0, 6).split('').forEach((d, i) => { newOtp[i] = d; });
+            setOtpDigits(newOtp);
+            const nextIndex = Math.min(cleaned.length, 5);
+            otpInputRefs.current[nextIndex]?.focus();
+            const fullCode = newOtp.join('');
+            if (fullCode.length === 6) verifyCode(fullCode);
+            return;
+        }
+        const newOtp = [...otpDigits];
+        newOtp[index] = cleaned;
+        setOtpDigits(newOtp);
+        if (cleaned && index < 5) otpInputRefs.current[index + 1]?.focus();
+        const fullCode = newOtp.join('');
+        if (fullCode.length === 6) verifyCode(fullCode);
+    };
+
+    const handleOtpKeyPress = (e, index) => {
+        if (e.nativeEvent.key === 'Backspace' && !otpDigits[index] && index > 0) {
+            otpInputRefs.current[index - 1]?.focus();
+        }
+    };
+
+    useEffect(() => {
+        return () => stopClipboardPolling();
+    }, []);
 
     useEffect(() => {
         if (user?.id) {
@@ -656,12 +729,12 @@ export default function Profile() {
                                         maxLength={12}
                                     />
                                 </View>
-                                <TouchableOpacity
+                                    <TouchableOpacity
                                     onPress={sendVerificationCode}
-                                    disabled={loading}
+                                    disabled={sendingOtp}
                                     style={[tw`py-4 rounded-lg flex-row items-center justify-center`, { backgroundColor: colors.primary }]}
                                 >
-                                    {loading ? (
+                                    {sendingOtp ? (
                                         <ActivityIndicator size="small" color="white" />
                                     ) : (
                                         <>
@@ -673,40 +746,69 @@ export default function Profile() {
                             </>
                         ) : (
                             <>
-                                <Text style={[tw`mb-4 text-center`, { color: colors.textSecondary }]}>
-                                    Enter the verification code sent to {phoneNumber}
+                                <Text style={[tw`mb-2 text-center`, { color: colors.textSecondary }]}>
+                                    Enter the 6-digit code sent to +91 {phoneNumber}
                                 </Text>
-                                <TextInput
-                                    style={[tw`rounded-lg px-4 py-4 text-center text-2xl font-bold tracking-widest mb-4 border`, { backgroundColor: colors.surfaceMuted, borderColor: colors.border, color: colors.textPrimary }]}
-                                    value={verificationCode}
-                                    onChangeText={setVerificationCode}
-                                    placeholder="••••••"
-                                    keyboardType="number-pad"
-                                    maxLength={6}
-                                    autoFocus
-                                />
+                                <Text style={[tw`mb-5 text-center text-xs`, { color: colors.textSecondary }]}>
+                                    The code auto-validates when all digits are entered
+                                </Text>
+
+                                {/* 6-Box OTP Input */}
+                                <View style={tw`flex-row justify-between mb-5`}>
+                                    {otpDigits.map((digit, index) => (
+                                        <TextInput
+                                            key={index}
+                                            ref={(el) => (otpInputRefs.current[index] = el)}
+                                            style={[
+                                                tw`w-12 h-14 rounded-xl text-center text-2xl font-bold border-2`,
+                                                {
+                                                    backgroundColor: colors.surfaceMuted,
+                                                    borderColor: digit ? colors.primary : colors.border,
+                                                    color: colors.textPrimary,
+                                                }
+                                            ]}
+                                            value={digit}
+                                            onChangeText={(text) => handleOtpChange(text, index)}
+                                            onKeyPress={(e) => handleOtpKeyPress(e, index)}
+                                            keyboardType="number-pad"
+                                            maxLength={6}
+                                            textContentType="oneTimeCode"
+                                            autoComplete={index === 0 ? 'sms-otp' : 'off'}
+                                            autoFocus={index === 0}
+                                            selectTextOnFocus
+                                            caretHidden
+                                        />
+                                    ))}
+                                </View>
+
+                                {verifying && (
+                                    <View style={tw`items-center mb-4`}>
+                                        <ActivityIndicator size="small" color={colors.primary} />
+                                        <Text style={[tw`mt-2 text-sm`, { color: colors.textSecondary }]}>Verifying...</Text>
+                                    </View>
+                                )}
+
                                 <TouchableOpacity
-                                    onPress={verifyCode}
-                                    disabled={verifying}
-                                    style={[tw`py-4 rounded-lg flex-row items-center justify-center mb-3`, { backgroundColor: colors.success }]}
+                                    onPress={() => verifyCode()}
+                                    disabled={verifying || otpDigits.join('').length < 6}
+                                    style={[tw`py-4 rounded-lg flex-row items-center justify-center mb-3`, { backgroundColor: otpDigits.join('').length === 6 ? colors.primary : colors.border }]}
                                 >
-                                    {verifying ? (
-                                        <ActivityIndicator size="small" color="white" />
-                                    ) : (
-                                        <>
-                                            <Ionicons name="checkmark-circle" size={20} color="white" />
-                                            <Text style={tw`text-white font-bold ml-2`}>Verify</Text>
-                                        </>
-                                    )}
+                                    <Ionicons name="checkmark-circle" size={20} color="white" />
+                                    <Text style={tw`text-white font-bold ml-2`}>Verify</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     onPress={() => {
-                                        setVerificationCode("");
+                                        setOtpDigits(['', '', '', '', '', '']);
                                         sendVerificationCode();
                                     }}
+                                    disabled={sendingOtp}
                                     style={tw`items-center py-2`}
                                 >
-                                    <Text style={[tw`font-semibold`, { color: colors.primary }]}>Resend Code</Text>
+                                    {sendingOtp ? (
+                                        <ActivityIndicator size="small" color={colors.primary} />
+                                    ) : (
+                                        <Text style={[tw`font-semibold`, { color: colors.primary }]}>Resend Code</Text>
+                                    )}
                                 </TouchableOpacity>
                             </>
                         )}
@@ -747,7 +849,7 @@ export default function Profile() {
                                 <TouchableOpacity
                                     onPress={handleSave}
                                     disabled={loading}
-                                    style={[tw`px-4 py-2 rounded-lg flex-row items-center`, { backgroundColor: colors.success }]}
+                                    style={[tw`px-4 py-2 rounded-lg flex-row items-center`, { backgroundColor: colors.primary }]}
                                 >
                                     {loading ? (
                                         <ActivityIndicator size="small" color="white" />
@@ -836,8 +938,8 @@ export default function Profile() {
                         </Text>
                         <Text style={[tw`text-sm mt-1`, { color: colors.textSecondary }]}>Completed</Text>
                     </View>
-                    <View style={[tw`items-center flex-1 p-4 rounded-xl mx-1`, { backgroundColor: colors.successSoft }]}>
-                        <Text style={[tw`text-3xl font-bold`, { color: colors.success }]}>
+                    <View style={[tw`items-center flex-1 p-4 rounded-xl mx-1`, { backgroundColor: colors.primarySoft }]}>
+                        <Text style={[tw`text-3xl font-bold`, { color: colors.primary }]}>
                             {driverData?.rating?.average?.toFixed(1) || "0.0"}
                         </Text>
                         <Text style={[tw`text-sm mt-1`, { color: colors.textSecondary }]}>Rating</Text>
@@ -863,8 +965,8 @@ export default function Profile() {
                                     const ins = driverData.vehicles.filter(v => v.insuranceVerified).length;
                                     const tot = driverData.vehicles.length;
                                     return (
-                                        <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: ins === tot ? colors.successSoft : '#fef3c7' }]}>
-                                            <Text style={[tw`text-xs font-bold`, { color: ins === tot ? colors.success : '#92400e' }]}>
+                                        <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: ins === tot ? colors.primarySoft : '#fef3c7' }]}>
+                                            <Text style={[tw`text-xs font-bold`, { color: ins === tot ? colors.primary : '#92400e' }]}>
                                                 {ins}/{tot} Insured
                                             </Text>
                                         </View>
@@ -950,9 +1052,9 @@ export default function Profile() {
                             <Text style={[tw`text-xs`, { color: colors.textMuted }]}>Government ID document</Text>
                         </View>
                         {driverData?.verification?.aadharVerified ? (
-                            <View style={[tw`flex-row items-center gap-1 px-3 py-1 rounded-full`, { backgroundColor: colors.successSoft }]}>
-                                <Ionicons name="checkmark-circle" size={12} color={colors.success} />
-                                <Text style={[tw`text-xs font-semibold`, { color: colors.success }]}>Verified</Text>
+                            <View style={[tw`flex-row items-center gap-1 px-3 py-1 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                <Ionicons name="checkmark-circle" size={12} color={colors.primary} />
+                                <Text style={[tw`text-xs font-semibold`, { color: colors.primary }]}>Verified</Text>
                             </View>
                         ) : aadharVerifying ? (
                             <View style={tw`flex-row items-center gap-2`}>
@@ -977,9 +1079,9 @@ export default function Profile() {
                             <Text style={[tw`text-xs`, { color: colors.textMuted }]}>Driver's license document</Text>
                         </View>
                         {driverData?.verification?.drivingLicenseVerified ? (
-                            <View style={[tw`flex-row items-center gap-1 px-3 py-1 rounded-full`, { backgroundColor: colors.successSoft }]}>
-                                <Ionicons name="checkmark-circle" size={12} color={colors.success} />
-                                <Text style={[tw`text-xs font-semibold`, { color: colors.success }]}>Verified</Text>
+                            <View style={[tw`flex-row items-center gap-1 px-3 py-1 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                <Ionicons name="checkmark-circle" size={12} color={colors.primary} />
+                                <Text style={[tw`text-xs font-semibold`, { color: colors.primary }]}>Verified</Text>
                             </View>
                         ) : licenseVerifying ? (
                             <View style={tw`flex-row items-center gap-2`}>
@@ -1112,8 +1214,8 @@ function VerificationRow({ label, verified, colors = {} }) {
     return (
         <View style={[tw`flex-row justify-between items-center py-2 border-b`, { borderColor: colors.border || '#e0e0e0' }]}>
             <Text style={[tw`text-sm`, { color: colors.textPrimary || '#111' }]}>{label}</Text>
-            <View style={[tw`px-3 py-1 rounded-full`, { backgroundColor: verified ? (colors.successSoft || '#dcfce7') : (colors.dangerSoft || '#fee2e2') }]}>
-                <Text style={[tw`text-xs font-semibold`, { color: verified ? (colors.success || '#078829') : (colors.danger || '#e72a08') }]}>
+            <View style={[tw`px-3 py-1 rounded-full`, { backgroundColor: verified ? (colors.primarySoft || 'rgba(19,236,91,0.15)') : (colors.dangerSoft || '#fee2e2') }]}>
+                <Text style={[tw`text-xs font-semibold`, { color: verified ? (colors.primary || '#13ec5b') : (colors.danger || '#e72a08') }]}>
                     {verified ? "Verified" : "Not Verified"}
                 </Text>
             </View>
