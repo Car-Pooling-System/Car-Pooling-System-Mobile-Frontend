@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, Image, ActivityIndicator, RefreshControl, TouchableOpacity, useColorScheme, Alert, TextInput, Linking, Modal, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, ScrollView, Image, ActivityIndicator, RefreshControl, TouchableOpacity, useColorScheme, Alert, TextInput, Linking, Modal, KeyboardAvoidingView, Platform, Keyboard } from "react-native";
 import { useUser, useAuth } from "@clerk/clerk-expo";
 import { useState, useEffect, useRef } from "react";
 import * as Clipboard from 'expo-clipboard';
@@ -454,7 +454,8 @@ export default function Profile() {
     };
 
     const handlePhoneEdit = () => {
-        setPhoneNumber(driverData?.phoneNumber || "");
+        const raw = (driverData?.phoneNumber || '').replace(/^\+91/, '').replace(/\D/g, '');
+        setPhoneNumber(formatPhoneNumber(raw));
         setVerificationSent(false);
         setVerificationCode("");
         setOtpDigits(['', '', '', '', '', '']);
@@ -468,14 +469,22 @@ export default function Profile() {
         }
     };
 
-    const startClipboardPolling = (onCode) => {
+    const startClipboardPolling = async (onCode) => {
         stopClipboardPolling();
-        let lastSeen = '';
+        // Capture whatever is already on the clipboard so we never treat it as the OTP
+        let baseline = '';
+        try {
+            baseline = await Clipboard.getStringAsync();
+        } catch (_) {}
+        let lastSeen = baseline;
+
         clipboardPollRef.current = setInterval(async () => {
             try {
                 const text = await Clipboard.getStringAsync();
-                if (text === lastSeen) return;
+                if (!text || text === lastSeen) return;
                 lastSeen = text;
+                // Only match content that is different from what was on clipboard before OTP was sent
+                if (text === baseline) return;
                 const match = text.match(/\b(\d{6})\b/);
                 if (match) {
                     stopClipboardPolling();
@@ -500,11 +509,13 @@ export default function Profile() {
     };
 
     const sendVerificationCode = async () => {
+        if (sendingOtp) return; // prevent double send
         if (!phoneNumber || phoneNumber.replace(/\D/g, '').length < 10) {
             Alert.alert("Error", "Please enter a valid phone number");
             return;
         }
 
+        Keyboard.dismiss();
         setSendingOtp(true);
         const digits = phoneNumber.replace(/\D/g, '');
         console.log('[PhoneVerification] Sending OTP — raw:', phoneNumber, '| digits:', digits, '| userId:', user.id, '| BACKEND_URL:', BACKEND_URL);
@@ -525,13 +536,13 @@ export default function Profile() {
                 throw new Error(`Failed to send verification code: ${response.status} — ${responseData.error || responseData.message || ''}`);
             }
 
-            setVerificationSent(true);
             setOtpDigits(['', '', '', '', '', '']);
-            setTimeout(() => otpInputRefs.current[0]?.focus(), 300);
+            setVerificationSent(true);
+            setTimeout(() => otpInputRefs.current[0]?.focus(), 400);
             // Start polling clipboard for auto-read
             startClipboardPolling((code) => {
-                const digits = code.split('');
-                setOtpDigits(digits);
+                const codeDigits = code.split('');
+                setOtpDigits(codeDigits);
                 verifyCode(code);
             });
         } catch (error) {
@@ -701,16 +712,20 @@ export default function Profile() {
                 visible={phoneModalVisible}
                 transparent={true}
                 animationType="slide"
-                onRequestClose={() => setPhoneModalVisible(false)}
+                onRequestClose={() => { stopClipboardPolling(); setPhoneModalVisible(false); }}
             >
                 <KeyboardAvoidingView
-                    style={tw`flex-1 bg-black bg-opacity-50 justify-center items-center`}
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={tw`flex-1 bg-black bg-opacity-50 justify-end`}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 >
-                    <View style={[tw`rounded-2xl p-6 w-11/12 max-w-md`, { backgroundColor: colors.surface }]}>
+                    <View style={[tw`rounded-t-3xl p-6 w-full`, { backgroundColor: colors.surface }]}>
+                        {/* Drag handle */}
+                        <View style={tw`items-center mb-4`}>
+                            <View style={[tw`w-10 h-1 rounded-full`, { backgroundColor: colors.border }]} />
+                        </View>
                         <View style={tw`flex-row items-center justify-between mb-4`}>
                             <Text style={[tw`text-xl font-bold`, { color: colors.textPrimary }]}>Edit Phone Number</Text>
-                            <TouchableOpacity onPress={() => setPhoneModalVisible(false)}>
+                            <TouchableOpacity onPress={() => { stopClipboardPolling(); setPhoneModalVisible(false); }}>
                                 <Ionicons name="close" size={24} color={colors.textPrimary} />
                             </TouchableOpacity>
                         </View>
