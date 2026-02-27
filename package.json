@@ -11,8 +11,8 @@
     "format:check": "prettier --check .",
     "test": "jest",
     "test:unit": "jest",
-    "test:integration": "jest --testPathPattern=integration",
-    "test:api": "jest --testPathPattern=api"
+    "test:integration": "jest --testPathPatterns=integration",
+    "test:api": "jest --testPathPatterns=api"
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.20",
