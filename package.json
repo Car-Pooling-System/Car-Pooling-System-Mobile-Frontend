@@ -6,7 +6,13 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "test": "jest",
+    "test:unit": "jest",
+    "test:integration": "jest --testPathPatterns=integration",
+    "test:api": "jest --testPathPatterns=api"
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.20",
@@ -41,6 +47,10 @@
   "private": true,
   "devDependencies": {
     "@types/react": "~19.1.10",
+    "eslint": "^10.0.1",
+    "jest": "^30.2.0",
+    "jest-expo": "^54.0.17",
+    "prettier": "^3.4.2",
     "typescript": "~5.9.2"
   }
 }
