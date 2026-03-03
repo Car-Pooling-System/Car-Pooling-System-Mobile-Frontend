@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import tw from "twrnc";
 import { uploadToStorage, deleteMultipleFromStorage } from "../../../utils/uploadToStorage";
 import { uriToBlob, getFileExtension } from "../../../utils/imageHelper";
@@ -22,6 +23,7 @@ export default function EditVehicle() {
 
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [insuranceVerifying, setInsuranceVerifying] = useState(false);
     const [formData, setFormData] = useState({
         brand: vehicleData.brand || "",
         model: vehicleData.model || "",
@@ -30,6 +32,7 @@ export default function EditVehicle() {
         licensePlate: vehicleData.licensePlate || "",
         totalSeats: vehicleData.totalSeats || 4,
         hasLuggageSpace: vehicleData.hasLuggageSpace || false,
+        insuranceVerified: vehicleData.insuranceVerified || false,
         images: vehicleData.images || []
     });
 
@@ -103,6 +106,26 @@ export default function EditVehicle() {
                 }
             ]
         );
+    };
+
+    const handleMockInsurance = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: '*/*',
+                copyToCacheDirectory: false,
+            });
+            if (result.canceled || !result.assets?.length) return;
+
+            setInsuranceVerifying(true);
+            // Mock: 1.5s simulated verification — always passes
+            await new Promise(r => setTimeout(r, 1500));
+            setFormData(prev => ({ ...prev, insuranceVerified: true }));
+            Alert.alert("Insurance Verified ✓", "Document accepted. Tap Save to confirm.");
+        } catch (e) {
+            Alert.alert("Error", "Could not process document. Please try again.");
+        } finally {
+            setInsuranceVerifying(false);
+        }
     };
 
     const handleSave = async () => {
@@ -267,6 +290,35 @@ export default function EditVehicle() {
                             trackColor={{ false: "#d1d5db", true: "#86efac" }}
                             thumbColor={formData.hasLuggageSpace ? "#16a34a" : "#f4f3f4"}
                         />
+                    </View>
+
+                    {/* Vehicle Insurance */}
+                    <View style={tw`flex-row items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-4`}>
+                        <View style={tw`flex-1 mr-3`}>
+                            <Text style={tw`text-gray-700 font-medium`}>Vehicle Insurance</Text>
+                            <Text style={tw`text-gray-400 text-xs mt-0.5`}>
+                                {formData.insuranceVerified ? 'Insurance document verified' : 'Upload insurance document to verify'}
+                            </Text>
+                        </View>
+                        {formData.insuranceVerified ? (
+                            <View style={tw`flex-row items-center gap-1`}>
+                                <Ionicons name="shield-checkmark" size={18} color="#10b981" />
+                                <Text style={tw`text-green-600 font-bold text-sm`}>Verified</Text>
+                            </View>
+                        ) : insuranceVerifying ? (
+                            <View style={tw`flex-row items-center gap-2`}>
+                                <ActivityIndicator size="small" color="#007AFF" />
+                                <Text style={tw`text-gray-500 text-xs`}>Verifying...</Text>
+                            </View>
+                        ) : (
+                            <TouchableOpacity
+                                onPress={handleMockInsurance}
+                                style={tw`bg-blue-500 px-3 py-2 rounded-lg flex-row items-center gap-1`}
+                            >
+                                <Ionicons name="cloud-upload-outline" size={14} color="white" />
+                                <Text style={tw`text-white font-semibold text-xs`}>Upload</Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 </View>
 

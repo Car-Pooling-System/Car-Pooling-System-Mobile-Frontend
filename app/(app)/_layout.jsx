@@ -34,7 +34,7 @@ export default function TabsLayout() {
                 tabBarIcon: ({ focused, color, size }) => {
                     let iconName;
 
-                    if (route.name === "hosting/index") {
+                    if (route.name === "hosting") {
                         iconName = focused ? "add-circle" : "add-circle-outline";
                     } else if (route.name === "my-rides") {
                         iconName = focused ? "car" : "car-outline";
@@ -60,7 +60,7 @@ export default function TabsLayout() {
             })}
         >
             <Tabs.Screen name="my-rides" options={{ title: "My Rides" }} />
-            <Tabs.Screen name="hosting/index" options={{ title: "Create Ride" }} />
+            <Tabs.Screen name="hosting" options={{ title: "Create Ride" }} />
             <Tabs.Screen name="profile" options={{ title: "Profile" }} />
         </Tabs>
     );

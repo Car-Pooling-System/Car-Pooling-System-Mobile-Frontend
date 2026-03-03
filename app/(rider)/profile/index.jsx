@@ -1,10 +1,13 @@
 import { View, Text, TouchableOpacity, Image, ScrollView, Alert, useColorScheme, ActivityIndicator } from "react-native";
 import { useUser, useAuth } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
 import tw from "twrnc";
 import { theme } from "../../../constants/Colors";
+
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 export default function RiderProfile() {
     const { user } = useUser();
@@ -13,6 +16,46 @@ export default function RiderProfile() {
     const scheme = useColorScheme();
     const colors = theme[scheme ?? "light"];
     const [loading, setLoading] = useState(false);
+    const [riderVerification, setRiderVerification] = useState({ aadharVerified: false });
+    const [aadharVerifying, setAadharVerifying] = useState(false);
+
+    const fetchRiderVerification = async () => {
+        if (!user?.id || !BACKEND_URL) return;
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/rider/rider-verification/${user.id}`);
+            if (res.ok) setRiderVerification(await res.json());
+        } catch (e) { /* silent */ }
+    };
+
+    useEffect(() => { fetchRiderVerification(); }, [user?.id]);
+
+    const handleMockVerifyAadhar = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: '*/*',
+                copyToCacheDirectory: false,
+            });
+            if (result.canceled || !result.assets?.length) return;
+
+            setAadharVerifying(true);
+            // Mock: 1.5 s simulated verification — always passes
+            await new Promise(r => setTimeout(r, 1500));
+
+            const res = await fetch(`${BACKEND_URL}/api/rider/rider-verification/${user.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ aadharVerified: true }),
+            });
+            if (res.ok) {
+                setRiderVerification(prev => ({ ...prev, aadharVerified: true }));
+                Alert.alert('Aadhaar Verified ✓', 'Your Aadhaar has been verified successfully!');
+            }
+        } catch (e) {
+            Alert.alert('Error', 'Verification failed. Please try again.');
+        } finally {
+            setAadharVerifying(false);
+        }
+    };
 
     const handleSwitchToDriver = async () => {
         Alert.alert(
@@ -85,6 +128,52 @@ export default function RiderProfile() {
                     <ActivityIndicator size="small" color={colors.primary} />
                 </View>
             )}
+
+            {/* Verification Status */}
+            <View style={[tw`mx-6 mt-6 rounded-2xl overflow-hidden`, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}>
+                <View style={[tw`px-4 py-3 flex-row items-center`, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                    <Ionicons name="shield-checkmark" size={18} color={colors.primary} />
+                    <Text style={[tw`text-base font-bold ml-2`, { color: colors.textPrimary }]}>Verification Status</Text>
+                </View>
+
+                <View style={tw`px-4 py-1`}>
+                    {/* Email - always verified */}
+                    <View style={tw`flex-row justify-between items-center py-3 border-b`} >
+                        <Text style={[tw`text-sm`, { color: colors.textPrimary }]}>Email</Text>
+                        <View style={tw`flex-row items-center gap-1 bg-green-100 px-3 py-1 rounded-full`}>
+                            <Ionicons name="checkmark-circle" size={11} color="#15803d" />
+                            <Text style={tw`text-xs font-semibold text-green-700`}>Verified</Text>
+                        </View>
+                    </View>
+
+                    {/* Aadhaar */}
+                    <View style={tw`flex-row justify-between items-center py-3`}>
+                        <View>
+                            <Text style={[tw`text-sm font-medium`, { color: colors.textPrimary }]}>Aadhaar</Text>
+                            <Text style={[tw`text-xs mt-0.5`, { color: colors.textMuted }]}>Government ID document</Text>
+                        </View>
+                        {riderVerification.aadharVerified ? (
+                            <View style={tw`flex-row items-center gap-1 bg-green-100 px-3 py-1 rounded-full`}>
+                                <Ionicons name="checkmark-circle" size={11} color="#15803d" />
+                                <Text style={tw`text-xs font-semibold text-green-700`}>Verified</Text>
+                            </View>
+                        ) : aadharVerifying ? (
+                            <View style={tw`flex-row items-center gap-2`}>
+                                <ActivityIndicator size="small" color={colors.primary} />
+                                <Text style={[tw`text-xs`, { color: colors.textSecondary }]}>Verifying...</Text>
+                            </View>
+                        ) : (
+                            <TouchableOpacity
+                                onPress={handleMockVerifyAadhar}
+                                style={[tw`flex-row items-center gap-1 px-3 py-1.5 rounded-xl`, { backgroundColor: colors.primarySoft }]}
+                            >
+                                <Ionicons name="cloud-upload-outline" size={12} color={colors.primary} />
+                                <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>Upload & Verify</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </View>
+            </View>
 
             {/* Switch to Driver */}
             <View style={[tw`mx-6 mt-6 rounded-2xl overflow-hidden`, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}>

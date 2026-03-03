@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, useColorScheme, Alert, StyleSheet, Dimensions, Switch, Linking, Platform } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, useColorScheme, Alert, StyleSheet, Dimensions, Switch, Linking, Platform, Modal } from "react-native";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
@@ -10,6 +10,54 @@ import { theme } from "../../../constants/Colors";
 import { decodePolyline } from "../../../utils/polyline";
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+
+/**
+ * Builds a 2D array of seat rows for the top-view car diagram.
+ * seatTypes: [{ type, label, count }]  (from ride.seats.seatTypes)
+ * confirmedPassengers: array of passenger objects
+ * driver: { name, profileImage }
+ *
+ * Returns: [ [seatSlot, ...], ... ]  where each seatSlot = { type, label, passenger | null }
+ */
+function buildCarLayout(seatTypes = [], confirmedPassengers = [], driver = {}) {
+    const pq = [...confirmedPassengers];
+    const take = () => pq.shift() || null;
+
+    // Expand seat types into individual slots
+    const expanded = seatTypes.flatMap(st =>
+        Array.from({ length: st.count || 0 }, () => ({ type: st.type, label: st.label || st.type }))
+    );
+    if (expanded.length === 0) return [];
+
+    // Assign passengers sequentially to slots
+    const assigned = expanded.map(s => ({ ...s, passenger: take() }));
+
+    // 'front' type goes in the front row alongside driver
+    const frontSeats = assigned.filter(s => s.type === 'front');
+    let backSeats = assigned.filter(s => s.type !== 'front');
+
+    // If no explicit 'front' type, promote first back seat to front row
+    if (frontSeats.length === 0 && backSeats.length > 0) {
+        frontSeats.push(backSeats.shift());
+    }
+
+    const driverSlot = {
+        type: 'driver',
+        label: 'Driver',
+        passenger: { name: driver.name, profileImage: driver.profileImage, isDriver: true },
+    };
+
+    const rows = [[driverSlot, ...frontSeats]];
+
+    // thirdRow seats get their own row(s) at the back
+    const thirdRow = backSeats.filter(s => s.type === 'thirdRow');
+    const midSeats = backSeats.filter(s => s.type !== 'thirdRow');
+
+    for (let i = 0; i < midSeats.length; i += 3) rows.push(midSeats.slice(i, i + 3));
+    for (let i = 0; i < thirdRow.length; i += 3) rows.push(thirdRow.slice(i, i + 3));
+
+    return rows;
+}
 
 export default function RideDetails() {
     const { rideId, role } = useLocalSearchParams();
@@ -24,6 +72,8 @@ export default function RideDetails() {
     const [updatingPrefs, setUpdatingPrefs] = useState(false);
     const [distanceToPickup, setDistanceToPickup] = useState(null);
     const [scrollEnabled, setScrollEnabled] = useState(true);
+    const [showSeatMap, setShowSeatMap] = useState(false);
+    const [activeSeat, setActiveSeat] = useState(null);
 
     const haversineKm = (lat1, lon1, lat2, lon2) => {
         const R = 6371;
@@ -214,6 +264,7 @@ export default function RideDetails() {
     }
 
     const confirmedPassengers = passengers?.filter(p => p.status === "confirmed") || [];
+    const carSeatRows = buildCarLayout(seats?.seatTypes || [], confirmedPassengers, driver);
     const isDriver = role === "driver";
     const canEditPrefs = isDriver && confirmedPassengers.length === 0;
     const isPast = departureTime < new Date() || ride.status === "completed" || ride.status === "cancelled";
@@ -459,13 +510,19 @@ export default function RideDetails() {
                                 </View>
                                 {vehicle?.brand ? (
                                     <View style={tw`mx-5 my-4`}>
-                                        {vehicle.image ? (
-                                            <Image source={{ uri: vehicle.image }} style={[tw`w-full rounded-xl`, { height: 150 }]} resizeMode="cover" />
-                                        ) : (
-                                            <View style={[tw`w-full rounded-xl items-center justify-center`, { height: 110, backgroundColor: colors.surfaceMuted }]}>
-                                                <MaterialCommunityIcons name="car-side" size={56} color={colors.textMuted} />
+                                        <TouchableOpacity onPress={() => setShowSeatMap(true)} activeOpacity={0.85}>
+                                            {vehicle.image ? (
+                                                <Image source={{ uri: vehicle.image }} style={[tw`w-full rounded-xl`, { height: 150 }]} resizeMode="cover" />
+                                            ) : (
+                                                <View style={[tw`w-full rounded-xl items-center justify-center`, { height: 110, backgroundColor: colors.surfaceMuted }]}>
+                                                    <MaterialCommunityIcons name="car-side" size={56} color={colors.textMuted} />
+                                                </View>
+                                            )}
+                                            <View style={[tw`absolute bottom-2 right-2 flex-row items-center gap-1 px-2 py-1 rounded-full`, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+                                                <MaterialCommunityIcons name="car-seat" size={11} color="white" />
+                                                <Text style={tw`text-[10px] text-white font-bold`}>View Seats</Text>
                                             </View>
-                                        )}
+                                        </TouchableOpacity>
                                         <View style={tw`flex-row items-center mt-3`}>
                                             <View style={tw`flex-1`}>
                                                 <Text style={[tw`font-bold text-base`, { color: colors.textPrimary }]}>
@@ -514,7 +571,16 @@ export default function RideDetails() {
                             {/* Passengers */}
                             <View style={[tw`bg-white rounded-2xl p-6 mb-6 shadow-sm border`, { borderColor: colors.border }]}>
                             <View style={tw`flex-row justify-between items-center mb-4`}>
-                                <Text style={[tw`text-sm font-bold`, { color: colors.textSecondary }]}>PASSENGERS</Text>
+                                <View style={tw`flex-row items-center gap-2`}>
+                                    <Text style={[tw`text-sm font-bold`, { color: colors.textSecondary }]}>PASSENGERS</Text>
+                                    <TouchableOpacity
+                                        onPress={() => { setActiveSeat(null); setShowSeatMap(true); }}
+                                        style={[tw`flex-row items-center gap-1 px-2 py-0.5 rounded-full`, { backgroundColor: colors.primarySoft }]}
+                                    >
+                                        <MaterialCommunityIcons name="car-seat" size={10} color={colors.primary} />
+                                        <Text style={[tw`text-[9px] font-bold`, { color: colors.primary }]}>Seat Map</Text>
+                                    </TouchableOpacity>
+                                </View>
                                 <View style={tw`flex-row items-center gap-2`}>
                                     <View style={[tw`flex-row items-center px-2 py-0.5 rounded-full`, { backgroundColor: isVerified ? colors.successSoft : colors.dangerSoft }]}>
                                         <Ionicons name={isVerified ? "shield-checkmark" : "shield-outline"} size={11} color={isVerified ? colors.success : colors.danger} />
@@ -627,6 +693,176 @@ export default function RideDetails() {
                     )}
                 </View>
             </ScrollView>
+
+            {/* ── Seat Map Modal ──────────────────────────────────────── */}
+            <Modal
+                visible={showSeatMap}
+                transparent
+                animationType="slide"
+                onRequestClose={() => { setShowSeatMap(false); setActiveSeat(null); }}
+            >
+                <View style={[tw`flex-1 justify-end`, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+                    {/* Tap outside to dismiss */}
+                    <TouchableOpacity style={tw`flex-1`} activeOpacity={1} onPress={() => { setShowSeatMap(false); setActiveSeat(null); }} />
+
+                    <View style={[tw`rounded-t-3xl px-5 pt-4 pb-10`, { backgroundColor: colors.surface }]}>
+                        {/* Drag handle */}
+                        <View style={[tw`w-10 h-1 rounded-full self-center mb-4`, { backgroundColor: colors.border }]} />
+
+                        {/* Header */}
+                        <View style={tw`flex-row items-center justify-between mb-5`}>
+                            <View>
+                                <Text style={[tw`text-base font-bold`, { color: colors.textPrimary }]}>Seat View</Text>
+                                <Text style={[tw`text-xs mt-0.5`, { color: colors.textSecondary }]}>
+                                    {confirmedPassengers.length}/{seats?.total} seats occupied
+                                </Text>
+                            </View>
+                            <TouchableOpacity
+                                onPress={() => { setShowSeatMap(false); setActiveSeat(null); }}
+                                style={[tw`w-8 h-8 rounded-full items-center justify-center`, { backgroundColor: colors.surfaceMuted }]}
+                            >
+                                <Ionicons name="close" size={18} color={colors.textPrimary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* FRONT label */}
+                        <View style={tw`flex-row items-center mb-2`}>
+                            <View style={[tw`h-px flex-1`, { backgroundColor: colors.border }]} />
+                            <Text style={[tw`text-[10px] font-bold mx-2 tracking-widest`, { color: colors.textMuted }]}>FRONT</Text>
+                            <View style={[tw`h-px flex-1`, { backgroundColor: colors.border }]} />
+                        </View>
+
+                        {/* Car body */}
+                        <View style={[tw`rounded-3xl py-4 px-2`, { backgroundColor: colors.surfaceMuted, borderWidth: 1.5, borderColor: colors.border }]}>
+                            {/* Windshield */}
+                            <View style={[tw`mx-8 rounded-lg mb-5`, { height: 10, backgroundColor: colors.border, opacity: 0.6 }]} />
+
+                            {carSeatRows.length === 0 ? (
+                                <View style={tw`items-center py-6`}>
+                                    <MaterialCommunityIcons name="car-off" size={32} color={colors.textMuted} />
+                                    <Text style={[tw`text-xs mt-2`, { color: colors.textMuted }]}>No seat layout available</Text>
+                                </View>
+                            ) : (
+                                carSeatRows.map((row, rowIdx) => (
+                                    <View key={rowIdx}>
+                                        {rowIdx > 0 && (
+                                            <View style={[tw`mx-4 my-3`, { height: 1, backgroundColor: colors.borderLight }]} />
+                                        )}
+                                        <View style={tw`flex-row justify-around`}>
+                                            {row.map((seat, seatIdx) => {
+                                                const isDriverSeat = seat.type === 'driver';
+                                                const p = seat.passenger;
+                                                const isActive = activeSeat?.rowIdx === rowIdx && activeSeat?.seatIdx === seatIdx;
+                                                return (
+                                                    <TouchableOpacity
+                                                        key={seatIdx}
+                                                        onPress={() => p && setActiveSeat(isActive ? null : { rowIdx, seatIdx, passenger: p, isDriver: isDriverSeat })}
+                                                        activeOpacity={p ? 0.75 : 1}
+                                                        style={tw`items-center`}
+                                                    >
+                                                        <View style={[
+                                                            tw`w-14 h-16 rounded-2xl items-center justify-center overflow-hidden`,
+                                                            {
+                                                                backgroundColor: isDriverSeat ? colors.successSoft : p ? colors.primarySoft : 'transparent',
+                                                                borderWidth: 2,
+                                                                borderColor: isActive ? '#f59e0b' : isDriverSeat ? colors.success : p ? colors.primary : colors.border,
+                                                                borderStyle: p || isDriverSeat ? 'solid' : 'dashed',
+                                                            }
+                                                        ]}>
+                                                            {p?.profileImage ? (
+                                                                <Image source={{ uri: p.profileImage }} style={tw`w-full h-full`} resizeMode="cover" />
+                                                            ) : isDriverSeat ? (
+                                                                <MaterialCommunityIcons name="steering" size={28} color={colors.success} />
+                                                            ) : (
+                                                                <Ionicons name="person-outline" size={20} color={colors.border} />
+                                                            )}
+                                                            {isDriverSeat && p?.profileImage && (
+                                                                <View style={[tw`absolute bottom-0.5 right-0.5 rounded-full p-0.5`, { backgroundColor: colors.success }]}>
+                                                                    <MaterialCommunityIcons name="steering" size={7} color="white" />
+                                                                </View>
+                                                            )}
+                                                        </View>
+                                                        <Text
+                                                            style={[tw`text-[9px] mt-1 text-center`, { color: p ? colors.textPrimary : colors.textMuted, maxWidth: 60 }]}
+                                                            numberOfLines={1}
+                                                        >
+                                                            {isDriverSeat ? 'Driver' : p ? p.name?.split(' ')[0] : 'Open'}
+                                                        </Text>
+                                                        {isDriverSeat && (
+                                                            <View style={[tw`mt-0.5 px-1.5 py-0.5 rounded-full`, { backgroundColor: colors.successSoft }]}>
+                                                                <Text style={[tw`text-[8px] font-bold`, { color: colors.success }]}>DRIVER</Text>
+                                                            </View>
+                                                        )}
+                                                    </TouchableOpacity>
+                                                );
+                                            })}
+                                        </View>
+                                    </View>
+                                ))
+                            )}
+
+                            {/* Rear windshield */}
+                            <View style={[tw`mx-8 rounded-lg mt-5`, { height: 10, backgroundColor: colors.border, opacity: 0.6 }]} />
+                        </View>
+
+                        {/* REAR label */}
+                        <View style={tw`flex-row items-center mt-2`}>
+                            <View style={[tw`h-px flex-1`, { backgroundColor: colors.border }]} />
+                            <Text style={[tw`text-[10px] font-bold mx-2 tracking-widest`, { color: colors.textMuted }]}>REAR</Text>
+                            <View style={[tw`h-px flex-1`, { backgroundColor: colors.border }]} />
+                        </View>
+
+                        {/* Tapped seat info card */}
+                        {activeSeat && (
+                            <View style={[
+                                tw`flex-row items-center gap-3 mt-4 p-3 rounded-xl`,
+                                {
+                                    backgroundColor: activeSeat.isDriver ? colors.successSoft : colors.primarySoft,
+                                    borderWidth: 1,
+                                    borderColor: activeSeat.isDriver ? colors.success : colors.primary,
+                                }
+                            ]}>
+                                {activeSeat.passenger.profileImage ? (
+                                    <Image source={{ uri: activeSeat.passenger.profileImage }} style={tw`w-10 h-10 rounded-full`} />
+                                ) : (
+                                    <View style={[tw`w-10 h-10 rounded-full items-center justify-center`, { backgroundColor: activeSeat.isDriver ? colors.success : colors.primary }]}>
+                                        <Ionicons name="person" size={20} color="white" />
+                                    </View>
+                                )}
+                                <View style={tw`flex-1`}>
+                                    <Text style={[tw`font-bold text-sm`, { color: colors.textPrimary }]}>{activeSeat.passenger.name}</Text>
+                                    {activeSeat.isDriver ? (
+                                        <Text style={[tw`text-xs`, { color: colors.success }]}>Driver</Text>
+                                    ) : activeSeat.passenger.farePaid ? (
+                                        <Text style={[tw`text-xs`, { color: colors.primary }]}>₹{activeSeat.passenger.farePaid} fare paid</Text>
+                                    ) : null}
+                                </View>
+                                {!activeSeat.isDriver && (
+                                    <TouchableOpacity style={[tw`p-2 rounded-full`, { backgroundColor: colors.primary }]}>
+                                        <Ionicons name="chatbubble" size={14} color="white" />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                        )}
+
+                        {/* Legend */}
+                        <View style={tw`flex-row justify-center gap-5 mt-4`}>
+                            <View style={tw`flex-row items-center gap-1.5`}>
+                                <View style={[tw`w-2.5 h-2.5 rounded-full`, { backgroundColor: colors.success }]} />
+                                <Text style={[tw`text-[10px]`, { color: colors.textSecondary }]}>Driver</Text>
+                            </View>
+                            <View style={tw`flex-row items-center gap-1.5`}>
+                                <View style={[tw`w-2.5 h-2.5 rounded-full`, { backgroundColor: colors.primary }]} />
+                                <Text style={[tw`text-[10px]`, { color: colors.textSecondary }]}>Booked</Text>
+                            </View>
+                            <View style={tw`flex-row items-center gap-1.5`}>
+                                <View style={[tw`w-2.5 h-2.5 rounded-full border`, { borderColor: colors.border }]} />
+                                <Text style={[tw`text-[10px]`, { color: colors.textSecondary }]}>Available</Text>
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
