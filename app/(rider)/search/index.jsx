@@ -11,9 +11,10 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Location from "expo-location";
-import MapView, { Marker, PROVIDER_DEFAULT } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
 import tw from "twrnc";
 import { theme } from "../../../constants/Colors";
+import { decodePolyline } from "../../../utils/polyline";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SNAP_BOTTOM = SCREEN_HEIGHT * 0.55;   // collapsed
@@ -101,8 +102,9 @@ function PlaceInput({ placeholder, value, onSelect, colors, icon, iconColor }) {
                             onSelect({ name: data.description, lat: loc.lat, lng: loc.lng });
                             setModalVisible(false);
                         }}
+                        keyboardShouldPersistTaps="always"
                         styles={{
-                            container: { flex: 0 },
+                            container: { flex: 1 },
                             textInputContainer: { paddingHorizontal: 16, paddingTop: 12, backgroundColor: colors.background },
                             textInput: {
                                 backgroundColor: colors.surfaceMuted, borderRadius: 12, fontSize: 14,
@@ -219,6 +221,11 @@ export default function SearchRides() {
         latitudeDelta: 0.15,
         longitudeDelta: 0.15,
     });
+
+    /* ── booking modal state ─────────────────────── */
+    const [selectedNearbyRide, setSelectedNearbyRide] = useState(null);
+    const [bookingPickup, setBookingPickup] = useState(null);
+    const [bookingDrop, setBookingDrop] = useState(null);
 
     /* ── bottom sheet animation ──────────────────── */
     const sheetY = useRef(new Animated.Value(SNAP_BOTTOM)).current;
@@ -395,6 +402,39 @@ export default function SearchRides() {
         return { pinnedRides: pinned, otherRides: other };
     }, [rides, bookedRideIds]);
 
+    /* ── booking modal map region ────────────────── */
+    const bookingMapRegion = useMemo(() => {
+        if (!selectedNearbyRide) return mapRegion;
+        const points = [];
+        const s = selectedNearbyRide.route?.start?.location?.coordinates;
+        const e = selectedNearbyRide.route?.end?.location?.coordinates;
+        if (s) points.push({ lat: s[1], lng: s[0] });
+        if (e) points.push({ lat: e[1], lng: e[0] });
+        if (bookingPickup) points.push(bookingPickup);
+        if (bookingDrop) points.push(bookingDrop);
+        if (points.length === 0) return mapRegion;
+        const lats = points.map((p) => p.lat);
+        const lngs = points.map((p) => p.lng);
+        return {
+            latitude: (Math.min(...lats) + Math.max(...lats)) / 2,
+            longitude: (Math.min(...lngs) + Math.max(...lngs)) / 2,
+            latitudeDelta: Math.max((Math.max(...lats) - Math.min(...lats)) * 1.6, 0.02),
+            longitudeDelta: Math.max((Math.max(...lngs) - Math.min(...lngs)) * 1.6, 0.02),
+        };
+    }, [selectedNearbyRide, bookingPickup, bookingDrop, mapRegion]);
+
+    const bookingRoutePoints = useMemo(() => {
+        if (!selectedNearbyRide?.route?.encodedPolyline) return [];
+        try { return decodePolyline(selectedNearbyRide.route.encodedPolyline); }
+        catch { return []; }
+    }, [selectedNearbyRide]);
+
+    const closeBookingModal = useCallback(() => {
+        setSelectedNearbyRide(null);
+        setBookingPickup(null);
+        setBookingDrop(null);
+    }, []);
+
     /* ── ride card ────────────────────────────────── */
     const renderRide = useCallback(
         (item) => {
@@ -418,7 +458,13 @@ export default function SearchRides() {
             return (
                 <TouchableOpacity
                     key={rideId}
-                    onPress={() =>
+                    onPress={() => {
+                        if (!searched) {
+                            setSelectedNearbyRide(item);
+                            setBookingPickup(pickup || null);
+                            setBookingDrop(drop || null);
+                            return;
+                        }
                         router.push({
                             pathname: "/(rider)/search/details",
                             params: {
@@ -428,8 +474,8 @@ export default function SearchRides() {
                                 estimatedFare: String(item.estimate?.fare ?? ""),
                                 isBooked: isBooked ? "1" : "0", isDriver: isDriver ? "1" : "0",
                             },
-                        })
-                    }
+                        });
+                    }}
                     activeOpacity={0.85}
                     style={[
                         tw`rounded-2xl mb-3 overflow-hidden`,
@@ -502,7 +548,7 @@ export default function SearchRides() {
                 </TouchableOpacity>
             );
         },
-        [bookedRideIds, user?.id, colors, pickup, drop, router],
+        [bookedRideIds, user?.id, colors, pickup, drop, router, searched],
     );
 
     /* ── date picker handler ─────────────────────── */
@@ -794,6 +840,253 @@ export default function SearchRides() {
             </Animated.View>
 
             {/* ── Expand hint FAB (only when collapsed & not expanded) ── */}
+
+            {/* ── Booking Modal for Nearby Rides ─── */}
+            <Modal
+                visible={!!selectedNearbyRide}
+                animationType="slide"
+                onRequestClose={closeBookingModal}
+            >
+                <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
+                    {/* Header */}
+                    <View
+                        style={[
+                            tw`flex-row items-center px-4 pt-12 pb-4`,
+                            { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
+                        ]}
+                    >
+                        <TouchableOpacity onPress={closeBookingModal}>
+                            <Ionicons name="close" size={24} color={colors.textPrimary} />
+                        </TouchableOpacity>
+                        <Text style={[tw`text-lg font-bold ml-4 flex-1`, { color: colors.textPrimary }]}>
+                            Enter Your Route
+                        </Text>
+                    </View>
+
+                    {/* Ride info bar */}
+                    {selectedNearbyRide && (
+                        <View
+                            style={[
+                                tw`flex-row items-center px-5 py-3`,
+                                { backgroundColor: colors.primarySoft, borderBottomWidth: 1, borderBottomColor: colors.border },
+                            ]}
+                        >
+                            <View style={tw`flex-1`}>
+                                <Text style={[tw`text-xs font-bold uppercase tracking-wider`, { color: colors.primary }]}>
+                                    {new Date(selectedNearbyRide.schedule?.departureTime).toLocaleDateString("en-IN", {
+                                        weekday: "short", day: "numeric", month: "short",
+                                    })}{" "}
+                                    {fmtTime(new Date(selectedNearbyRide.schedule?.departureTime))}
+                                </Text>
+                                <View style={[tw`flex-row items-center mt-1`, { gap: 6 }]}>
+                                    <Text style={[tw`text-sm`, { color: colors.textPrimary }]} numberOfLines={1}>
+                                        {selectedNearbyRide.route?.start?.name || "Origin"}
+                                    </Text>
+                                    <Ionicons name="arrow-forward" size={12} color={colors.textMuted} />
+                                    <Text style={[tw`text-sm flex-1`, { color: colors.textPrimary }]} numberOfLines={1}>
+                                        {selectedNearbyRide.route?.end?.name || "Destination"}
+                                    </Text>
+                                </View>
+                            </View>
+                            <View style={[tw`px-3 py-1.5 rounded-full`, { backgroundColor: colors.primary + "22" }]}>
+                                <Text style={[tw`text-sm font-bold`, { color: colors.primary }]}>
+                                    ₹{selectedNearbyRide.estimate?.fare ?? "—"}
+                                </Text>
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Map */}
+                    <View style={{ height: 240 }}>
+                        <MapView
+                            style={StyleSheet.absoluteFillObject}
+                            provider={PROVIDER_DEFAULT}
+                            region={bookingMapRegion}
+                            showsUserLocation
+                            userInterfaceStyle={scheme === "dark" ? "dark" : "light"}
+                        >
+                            {/* Ride route polyline */}
+                            {bookingRoutePoints.length > 0 && (
+                                <Polyline
+                                    coordinates={bookingRoutePoints}
+                                    strokeColor={colors.textMuted}
+                                    strokeWidth={3}
+                                    lineDashPattern={[6, 4]}
+                                />
+                            )}
+                            {/* Ride start marker */}
+                            {selectedNearbyRide?.route?.start?.location?.coordinates && (
+                                <Marker
+                                    coordinate={{
+                                        latitude: selectedNearbyRide.route.start.location.coordinates[1],
+                                        longitude: selectedNearbyRide.route.start.location.coordinates[0],
+                                    }}
+                                    title="Route Start"
+                                    opacity={0.5}
+                                    pinColor="#6b7280"
+                                />
+                            )}
+                            {/* Ride end marker */}
+                            {selectedNearbyRide?.route?.end?.location?.coordinates && (
+                                <Marker
+                                    coordinate={{
+                                        latitude: selectedNearbyRide.route.end.location.coordinates[1],
+                                        longitude: selectedNearbyRide.route.end.location.coordinates[0],
+                                    }}
+                                    title="Route End"
+                                    opacity={0.5}
+                                    pinColor="#6b7280"
+                                />
+                            )}
+                            {/* User pickup marker */}
+                            {bookingPickup && (
+                                <Marker
+                                    coordinate={{ latitude: bookingPickup.lat, longitude: bookingPickup.lng }}
+                                    title="Your Pickup"
+                                >
+                                    <View style={tw`items-center`}>
+                                        <View
+                                            style={[
+                                                tw`w-8 h-8 rounded-full items-center justify-center`,
+                                                { backgroundColor: colors.primary, shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 4, elevation: 5 },
+                                            ]}
+                                        >
+                                            <Ionicons name="radio-button-on" size={14} color="#fff" />
+                                        </View>
+                                        <View style={[tw`px-2 py-0.5 rounded mt-1`, { backgroundColor: colors.primary }]}>
+                                            <Text style={[tw`text-[9px] font-bold`, { color: "#fff" }]}>PICKUP</Text>
+                                        </View>
+                                    </View>
+                                </Marker>
+                            )}
+                            {/* User drop marker */}
+                            {bookingDrop && (
+                                <Marker
+                                    coordinate={{ latitude: bookingDrop.lat, longitude: bookingDrop.lng }}
+                                    title="Your Drop"
+                                >
+                                    <View style={tw`items-center`}>
+                                        <View
+                                            style={[
+                                                tw`w-8 h-8 rounded-full items-center justify-center`,
+                                                { backgroundColor: "#ef4444", shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 4, elevation: 5 },
+                                            ]}
+                                        >
+                                            <Ionicons name="location" size={14} color="#fff" />
+                                        </View>
+                                        <View style={[tw`px-2 py-0.5 rounded mt-1`, { backgroundColor: "#ef4444" }]}>
+                                            <Text style={[tw`text-[9px] font-bold`, { color: "#fff" }]}>DROP</Text>
+                                        </View>
+                                    </View>
+                                </Marker>
+                            )}
+                        </MapView>
+                    </View>
+
+                    {/* Autocomplete inputs */}
+                    <View style={tw`px-5 pt-5`}>
+                        <Text style={[tw`text-sm font-bold mb-3`, { color: colors.textPrimary }]}>
+                            Where are you going?
+                        </Text>
+                        <View style={{ gap: 10 }}>
+                            <PlaceInput
+                                placeholder="Your Pickup Point"
+                                value={bookingPickup}
+                                onSelect={setBookingPickup}
+                                colors={colors}
+                                icon="radio-button-on"
+                                iconColor={colors.primary}
+                            />
+                            <View style={[tw`absolute`, { left: 28, top: 42, width: 2, height: 12, backgroundColor: colors.border }]} />
+                            <PlaceInput
+                                placeholder="Your Drop Point"
+                                value={bookingDrop}
+                                onSelect={setBookingDrop}
+                                colors={colors}
+                                icon="location"
+                                iconColor="#ef4444"
+                            />
+                        </View>
+
+                        {/* Validation confirmations */}
+                        {bookingPickup && (
+                            <View style={[tw`flex-row items-center mt-3`, { gap: 6 }]}>
+                                <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+                                <Text style={[tw`text-xs`, { color: colors.success }]} numberOfLines={1}>
+                                    Pickup: {bookingPickup.name}
+                                </Text>
+                            </View>
+                        )}
+                        {bookingDrop && (
+                            <View style={[tw`flex-row items-center mt-1`, { gap: 6 }]}>
+                                <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+                                <Text style={[tw`text-xs`, { color: colors.success }]} numberOfLines={1}>
+                                    Drop: {bookingDrop.name}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Confirm button */}
+                    <View style={[tw`absolute bottom-0 left-0 right-0 px-5 pb-8 pt-4`, { backgroundColor: colors.background }]}>
+                        <TouchableOpacity
+                            onPress={() => {
+                                if (!bookingPickup || !bookingDrop) {
+                                    Alert.alert("Missing info", "Please select both pickup and drop locations.");
+                                    return;
+                                }
+                                const rid = selectedNearbyRide._id?.toString();
+                                const isDrv = selectedNearbyRide.driver?.userId === user?.id;
+                                const isBkd = bookedRideIds.has(rid);
+                                closeBookingModal();
+                                router.push({
+                                    pathname: "/(rider)/search/details",
+                                    params: {
+                                        rideId: rid,
+                                        pickupName: bookingPickup.name,
+                                        pickupLat: String(bookingPickup.lat),
+                                        pickupLng: String(bookingPickup.lng),
+                                        dropName: bookingDrop.name,
+                                        dropLat: String(bookingDrop.lat),
+                                        dropLng: String(bookingDrop.lng),
+                                        estimatedFare: String(selectedNearbyRide.estimate?.fare ?? ""),
+                                        isBooked: isBkd ? "1" : "0",
+                                        isDriver: isDrv ? "1" : "0",
+                                    },
+                                });
+                            }}
+                            disabled={!bookingPickup || !bookingDrop}
+                            activeOpacity={0.8}
+                            style={[
+                                tw`py-4 rounded-2xl flex-row items-center justify-center`,
+                                {
+                                    backgroundColor: bookingPickup && bookingDrop ? colors.primary : colors.surfaceMuted,
+                                    gap: 8,
+                                    shadowColor: colors.primary,
+                                    shadowOpacity: bookingPickup && bookingDrop ? 0.3 : 0,
+                                    shadowRadius: 12,
+                                    shadowOffset: { width: 0, height: 4 },
+                                    elevation: bookingPickup && bookingDrop ? 6 : 0,
+                                },
+                            ]}
+                        >
+                            <Ionicons
+                                name="checkmark-circle"
+                                size={20}
+                                color={bookingPickup && bookingDrop ? "#fff" : colors.textMuted}
+                            />
+                            <Text
+                                style={[
+                                    tw`text-base font-bold`,
+                                    { color: bookingPickup && bookingDrop ? "#fff" : colors.textMuted },
+                                ]}
+                            >
+                                View Details & Book
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
 
             {/* ── Date Picker ─────────────────────── */}
             {showDatePicker && (
