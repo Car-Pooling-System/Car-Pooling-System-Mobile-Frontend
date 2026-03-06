@@ -1,7 +1,7 @@
 import {
     View, Text, TouchableOpacity, ActivityIndicator,
     useColorScheme, Alert, Platform, ScrollView,
-    Modal, Pressable, PanResponder,
+    Modal, Pressable,
     Animated, Dimensions, StyleSheet,
 } from "react-native";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
@@ -16,8 +16,7 @@ import tw from "twrnc";
 import { theme } from "../../../constants/Colors";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-const SNAP_BOTTOM = SCREEN_HEIGHT * 0.55;   // collapsed: sheet top sits at 55% from top
-const SNAP_TOP = 60;                         // expanded: nearly full-screen
+const SNAP_BOTTOM = SCREEN_HEIGHT * 0.55;   // sheet top sits at 55% from top
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -209,58 +208,6 @@ export default function SearchRides() {
 
     /* ── bottom sheet animation ──────────────────── */
     const sheetY = useRef(new Animated.Value(SNAP_BOTTOM)).current;
-    const lastSnap = useRef(SNAP_BOTTOM);
-    const [isExpanded, setIsExpanded] = useState(false);
-
-    const panResponder = useRef(
-        PanResponder.create({
-            onStartShouldSetPanResponder: () => true,
-            onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 8,
-            onPanResponderGrant: () => {
-                sheetY.setOffset(lastSnap.current);
-                sheetY.setValue(0);
-            },
-            onPanResponderMove: (_, g) => {
-                const next = lastSnap.current + g.dy;
-                if (next >= SNAP_TOP && next <= SNAP_BOTTOM) {
-                    sheetY.setOffset(0);
-                    sheetY.setValue(next);
-                }
-            },
-            onPanResponderRelease: (_, g) => {
-                sheetY.flattenOffset();
-                const swipedUp = g.dy < -60 || g.vy < -0.5;
-                const swipedDown = g.dy > 60 || g.vy > 0.5;
-
-                let dest;
-                if (swipedUp) dest = SNAP_TOP;
-                else if (swipedDown) dest = SNAP_BOTTOM;
-                else dest = lastSnap.current;
-
-                lastSnap.current = dest;
-                setIsExpanded(dest === SNAP_TOP);
-
-                Animated.spring(sheetY, {
-                    toValue: dest,
-                    useNativeDriver: false,
-                    bounciness: 4,
-                    speed: 16,
-                }).start();
-            },
-        })
-    ).current;
-
-    const collapseSheet = useCallback(() => {
-        lastSnap.current = SNAP_BOTTOM;
-        setIsExpanded(false);
-        Animated.spring(sheetY, { toValue: SNAP_BOTTOM, useNativeDriver: false, bounciness: 4, speed: 16 }).start();
-    }, [sheetY]);
-
-    const expandSheet = useCallback(() => {
-        lastSnap.current = SNAP_TOP;
-        setIsExpanded(true);
-        Animated.spring(sheetY, { toValue: SNAP_TOP, useNativeDriver: false, bounciness: 4, speed: 16 }).start();
-    }, [sheetY]);
 
     /* ── fetch nearby rides on mount ─────────────── */
     useEffect(() => {
@@ -298,7 +245,9 @@ export default function SearchRides() {
 
     /* ── re-fetch nearby when radius changes ──────── */
     const fetchNearbyWithRadius = useCallback(async (radius) => {
-        const loc = userLocationRef.current;
+        const loc = pickup
+            ? { latitude: pickup.lat, longitude: pickup.lng }
+            : userLocationRef.current;
         if (!loc || searched) return;
         setNearbyLoading(true);
         try {
@@ -307,7 +256,15 @@ export default function SearchRides() {
             if (res.ok && Array.isArray(data)) setNearbyRides(data);
         } catch (e) { console.log("Radius re-fetch failed:", e.message); }
         finally { setNearbyLoading(false); }
-    }, [searched]);
+    }, [searched, pickup]);
+
+    /* ── re-fetch nearby when pickup changes ──────── */
+    useEffect(() => {
+        if (pickup && !searched) {
+            setMapRegion({ latitude: pickup.lat, longitude: pickup.lng, latitudeDelta: 0.1, longitudeDelta: 0.1 });
+            fetchNearbyWithRadius(nearbyRadius);
+        }
+    }, [pickup]);
 
     /* ── search ─────────────────────────────────── */
     const searchRides = useCallback(async () => {
@@ -457,13 +414,6 @@ export default function SearchRides() {
 
     const canSearch = !!pickup && !!drop;
 
-    /* top card opacity driven by sheet position */
-    const topOpacity = sheetY.interpolate({
-        inputRange: [SNAP_TOP, SNAP_BOTTOM],
-        outputRange: [0, 1],
-        extrapolate: "clamp",
-    });
-
     /* ══════════════════════════════════════════════
        RENDER
        ══════════════════════════════════════════════ */
@@ -485,9 +435,8 @@ export default function SearchRides() {
             />
 
             {/* ── Top Search Overlay ───────────────── */}
-            <Animated.View
-                style={[tw`absolute top-0 left-0 right-0 z-20 pt-12 px-4 pb-3`, { opacity: topOpacity }]}
-                pointerEvents={isExpanded ? "none" : "auto"}
+            <View
+                style={[tw`absolute top-0 left-0 right-0 z-20 pt-12 px-4 pb-3`]}
             >
                 <View
                     style={[
@@ -546,30 +495,6 @@ export default function SearchRides() {
                         </View>
                     </View>
 
-                    {/* Radius pills */}
-                    {!searched && (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-3`} contentContainerStyle={{ gap: 8 }}>
-                            {[25, 50, 100, 200, 500].map((km) => (
-                                <TouchableOpacity
-                                    key={km}
-                                    onPress={() => { setNearbyRadius(km); fetchNearbyWithRadius(km); }}
-                                    style={[
-                                        tw`py-1.5 px-3 rounded-full`,
-                                        {
-                                            backgroundColor: nearbyRadius === km ? colors.primary : colors.surfaceMuted,
-                                            borderWidth: 1,
-                                            borderColor: nearbyRadius === km ? colors.primary : colors.border,
-                                        },
-                                    ]}
-                                >
-                                    <Text style={[tw`text-xs font-bold`, { color: nearbyRadius === km ? "#fff" : colors.textSecondary }]}>
-                                        {km}km
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-                    )}
-
                     {/* Search button */}
                     <TouchableOpacity
                         onPress={searchRides}
@@ -600,7 +525,7 @@ export default function SearchRides() {
                         )}
                     </TouchableOpacity>
                 </View>
-            </Animated.View>
+            </View>
 
             {/* ── Bottom Sheet ─────────────────────── */}
             <Animated.View
@@ -622,123 +547,11 @@ export default function SearchRides() {
                 ]}
             >
                 {/* Drag Handle */}
-                <View {...panResponder.panHandlers} style={tw`w-full items-center pt-3 pb-2`}>
+                <View style={tw`w-full items-center pt-3 pb-2`}>
                     <View style={[tw`w-10 h-1 rounded-full`, { backgroundColor: colors.textMuted + "60" }]} />
                 </View>
 
-                {isExpanded ? (
-                    /* ── Filter view ───────────────── */
-                    <ScrollView contentContainerStyle={tw`px-5 pt-2 pb-24`} showsVerticalScrollIndicator={false} bounces>
-                        <View style={tw`flex-row items-center justify-between mb-5`}>
-                            <Text style={[tw`text-xl font-extrabold`, { color: colors.textPrimary }]}>Filters</Text>
-                            <TouchableOpacity onPress={collapseSheet} style={[tw`px-4 py-2 rounded-full`, { backgroundColor: colors.primarySoft }]}>
-                                <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>Done</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        {/* Search Radius */}
-                        <Text style={[tw`text-xs font-bold mb-2 tracking-wider`, { color: colors.textMuted }]}>SEARCH RADIUS</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-5`} contentContainerStyle={{ gap: 8 }}>
-                            {[25, 50, 100, 200, 500].map((km) => (
-                                <TouchableOpacity
-                                    key={km}
-                                    onPress={() => { setNearbyRadius(km); fetchNearbyWithRadius(km); }}
-                                    style={[
-                                        tw`py-2 px-5 rounded-full`,
-                                        {
-                                            backgroundColor: nearbyRadius === km ? colors.primary : colors.surfaceMuted,
-                                            borderWidth: 1,
-                                            borderColor: nearbyRadius === km ? colors.primary : colors.border,
-                                        },
-                                    ]}
-                                >
-                                    <Text style={[tw`text-sm font-bold`, { color: nearbyRadius === km ? "#fff" : colors.textSecondary }]}>{km}km</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-
-                        {/* Seats */}
-                        <Text style={[tw`text-xs font-bold mb-2 tracking-wider`, { color: colors.textMuted }]}>SEATS NEEDED</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-5`} contentContainerStyle={{ gap: 8 }}>
-                            {[1, 2, 3, 4, 5, 6].map((n) => (
-                                <TouchableOpacity
-                                    key={n}
-                                    onPress={() => setSeats(n)}
-                                    style={[
-                                        tw`w-11 h-11 rounded-full items-center justify-center`,
-                                        {
-                                            backgroundColor: seats === n ? colors.primary : colors.surfaceMuted,
-                                            borderWidth: 1,
-                                            borderColor: seats === n ? colors.primary : colors.border,
-                                        },
-                                    ]}
-                                >
-                                    <Text style={[tw`text-sm font-bold`, { color: seats === n ? "#fff" : colors.textSecondary }]}>{n}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-
-                        {/* Minimum Rating */}
-                        <Text style={[tw`text-xs font-bold mb-2 tracking-wider`, { color: colors.textMuted }]}>MINIMUM RATING</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-5`} contentContainerStyle={{ gap: 8 }}>
-                            {[3, 3.5, 4, 4.5].map((r) => (
-                                <TouchableOpacity
-                                    key={r}
-                                    onPress={() => setMinRating(minRating === r ? null : r)}
-                                    style={[
-                                        tw`flex-row items-center py-2 px-4 rounded-full`,
-                                        {
-                                            backgroundColor: minRating === r ? colors.primary : colors.surfaceMuted,
-                                            borderWidth: 1,
-                                            borderColor: minRating === r ? colors.primary : colors.border,
-                                            gap: 4,
-                                        },
-                                    ]}
-                                >
-                                    <Ionicons name="star" size={12} color={minRating === r ? "#fff" : "#f59e0b"} />
-                                    <Text style={[tw`text-sm font-bold`, { color: minRating === r ? "#fff" : colors.textSecondary }]}>{r}+</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-
-                        {/* Vehicle Type */}
-                        <Text style={[tw`text-xs font-bold mb-2 tracking-wider`, { color: colors.textMuted }]}>VEHICLE TYPE</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-5`} contentContainerStyle={{ gap: 8 }}>
-                            {[
-                                { label: "Sedan", icon: "car-outline" },
-                                { label: "SUV", icon: "car-sport-outline" },
-                                { label: "Van", icon: "bus-outline" },
-                                { label: "Hatchback", icon: "car-outline" },
-                            ].map((v) => (
-                                <TouchableOpacity
-                                    key={v.label}
-                                    onPress={() => setVehicleType(vehicleType === v.label ? null : v.label)}
-                                    style={[
-                                        tw`flex-row items-center py-2 px-4 rounded-full`,
-                                        {
-                                            backgroundColor: vehicleType === v.label ? colors.primary : colors.surfaceMuted,
-                                            borderWidth: 1,
-                                            borderColor: vehicleType === v.label ? colors.primary : colors.border,
-                                            gap: 6,
-                                        },
-                                    ]}
-                                >
-                                    <Ionicons name={v.icon} size={14} color={vehicleType === v.label ? "#fff" : colors.textSecondary} />
-                                    <Text style={[tw`text-sm font-bold`, { color: vehicleType === v.label ? "#fff" : colors.textSecondary }]}>{v.label}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-
-                        {/* Preference Toggles */}
-                        <Text style={[tw`text-xs font-bold mb-3 tracking-wider`, { color: colors.textMuted }]}>PREFERENCES</Text>
-                        <FilterToggle colors={colors} icon="paw" label="Pet Friendly" subtitle="Pets allowed on board" value={petFriendly} onToggle={() => setPetFriendly(!petFriendly)} />
-                        <FilterToggle colors={colors} icon="ban" label="No Smoking" subtitle="Smoke-free ride" value={noSmoking} onToggle={() => setNoSmoking(!noSmoking)} />
-                        <FilterToggle colors={colors} icon="snow" label="Air Conditioning" subtitle="AC required" value={acRequired} onToggle={() => setAcRequired(!acRequired)} />
-                        <FilterToggle colors={colors} icon="female" label="Ladies Only" subtitle="Women passengers only" value={ladiesOnly} onToggle={() => setLadiesOnly(!ladiesOnly)} />
-                        <FilterToggle colors={colors} icon="musical-notes" label="Music Allowed" subtitle="Driver plays music" value={musicAllowed} onToggle={() => setMusicAllowed(!musicAllowed)} />
-                    </ScrollView>
-                ) : (
-                    /* ── Rides list ────────────────── */
+                    {/* ── Rides list ────────────────── */}
                     <ScrollView contentContainerStyle={tw`px-5 pt-1 pb-24`} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bounces>
                         {/* Header */}
                         <View style={tw`mb-4`}>
@@ -803,6 +616,26 @@ export default function SearchRides() {
                                             <Ionicons name="location" size={14} color={colors.primary} />
                                             <Text style={[tw`text-xs font-extrabold tracking-widest`, { color: colors.primary }]}>WITHIN {nearbyRadius} KM</Text>
                                         </View>
+                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`} contentContainerStyle={{ gap: 8 }}>
+                                            {[25, 50, 100, 200, 500].map((km) => (
+                                                <TouchableOpacity
+                                                    key={km}
+                                                    onPress={() => { setNearbyRadius(km); fetchNearbyWithRadius(km); }}
+                                                    style={[
+                                                        tw`py-1.5 px-3 rounded-full`,
+                                                        {
+                                                            backgroundColor: nearbyRadius === km ? colors.primary : colors.surfaceMuted,
+                                                            borderWidth: 1,
+                                                            borderColor: nearbyRadius === km ? colors.primary : colors.border,
+                                                        },
+                                                    ]}
+                                                >
+                                                    <Text style={[tw`text-xs font-bold`, { color: nearbyRadius === km ? "#fff" : colors.textSecondary }]}>
+                                                        {km} km
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </ScrollView>
                                         {nearbyRides.map((r) => renderRide(r))}
                                     </>
                                 )}
@@ -816,31 +649,7 @@ export default function SearchRides() {
                             </>
                         )}
                     </ScrollView>
-                )}
             </Animated.View>
-
-            {/* ── Expand FAB ──────────────────────── */}
-            {!isExpanded && (
-                <TouchableOpacity
-                    onPress={expandSheet}
-                    activeOpacity={0.85}
-                    style={[
-                        tw`absolute z-40 w-14 h-14 rounded-full items-center justify-center`,
-                        {
-                            right: 20,
-                            bottom: 24,
-                            backgroundColor: colors.primary,
-                            shadowColor: colors.primary,
-                            shadowOpacity: 0.4,
-                            shadowRadius: 12,
-                            shadowOffset: { width: 0, height: 4 },
-                            elevation: 8,
-                        },
-                    ]}
-                >
-                    <Ionicons name="chevron-up" size={28} color="#fff" />
-                </TouchableOpacity>
-            )}
 
             {/* ── Date Picker ─────────────────────── */}
             {showDatePicker && (
