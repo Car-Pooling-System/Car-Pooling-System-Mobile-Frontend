@@ -11,6 +11,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Location from "expo-location";
+import MapView, { PROVIDER_DEFAULT } from "react-native-maps";
 import tw from "twrnc";
 import { theme } from "../../../constants/Colors";
 
@@ -199,6 +200,12 @@ export default function SearchRides() {
     const [locationDenied, setLocationDenied] = useState(false);
     const [nearbyRadius, setNearbyRadius] = useState(50);
     const userLocationRef = useRef(null);
+    const [mapRegion, setMapRegion] = useState({
+        latitude: 20.5937,
+        longitude: 78.9629,
+        latitudeDelta: 0.15,
+        longitudeDelta: 0.15,
+    });
 
     /* ── bottom sheet animation ──────────────────── */
     const sheetY = useRef(new Animated.Value(SNAP_BOTTOM)).current;
@@ -266,6 +273,7 @@ export default function SearchRides() {
                 const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
                 const { latitude, longitude } = loc.coords;
                 userLocationRef.current = { latitude, longitude };
+                setMapRegion({ latitude, longitude, latitudeDelta: 0.1, longitudeDelta: 0.1 });
 
                 const [nearbyRes, bookingsRes] = await Promise.all([
                     fetch(`${BACKEND_URL}/api/rides/nearby?lat=${latitude}&lng=${longitude}&radiusKm=${nearbyRadius}&limit=15`),
@@ -463,9 +471,18 @@ export default function SearchRides() {
         <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
 
             {/* ── Map Background ───────────────────── */}
-            <View style={StyleSheet.absoluteFill}>
-                <View style={[tw`flex-1`, { backgroundColor: scheme === "dark" ? "#1a2e20" : "#dde8e0" }]} />
-            </View>
+            <MapView
+                provider={PROVIDER_DEFAULT}
+                style={StyleSheet.absoluteFill}
+                region={mapRegion}
+                showsUserLocation
+                showsMyLocationButton={false}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                rotateEnabled={false}
+                pitchEnabled={false}
+                userInterfaceStyle={scheme === "dark" ? "dark" : "light"}
+            />
 
             {/* ── Top Search Overlay ───────────────── */}
             <Animated.View
