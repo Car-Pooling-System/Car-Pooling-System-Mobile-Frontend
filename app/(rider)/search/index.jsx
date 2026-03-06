@@ -1,8 +1,8 @@
 import {
     View, Text, TouchableOpacity, ActivityIndicator,
     useColorScheme, Alert, Platform, ScrollView,
-    Modal, Pressable,
-    Animated, Dimensions, StyleSheet,
+    Modal, Pressable, PanResponder,
+    Animated, Dimensions, StyleSheet, Image,
 } from "react-native";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useRouter } from "expo-router";
@@ -11,12 +11,13 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Location from "expo-location";
-import MapView, { PROVIDER_DEFAULT } from "react-native-maps";
+import MapView, { Marker, PROVIDER_DEFAULT } from "react-native-maps";
 import tw from "twrnc";
 import { theme } from "../../../constants/Colors";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-const SNAP_BOTTOM = SCREEN_HEIGHT * 0.55;   // sheet top sits at 55% from top
+const SNAP_BOTTOM = SCREEN_HEIGHT * 0.55;   // collapsed
+const SNAP_TOP = 60;                         // expanded: nearly full-screen
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -24,6 +25,18 @@ const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 /* ─── helpers ─────────────────────────────────────── */
 const fmtTime = (d) =>
     d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+/** Haversine distance between two {lat,lng} points → km */
+function haversineKm(a, b) {
+    const R = 6371;
+    const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+    const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+    const sinLat = Math.sin(dLat / 2);
+    const sinLng = Math.sin(dLng / 2);
+    const h = sinLat * sinLat +
+        Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * sinLng * sinLng;
+    return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
 
 /* ─── PlaceInput ──────────────────────────────────── */
 function PlaceInput({ placeholder, value, onSelect, colors, icon, iconColor }) {
@@ -199,6 +212,7 @@ export default function SearchRides() {
     const [locationDenied, setLocationDenied] = useState(false);
     const [nearbyRadius, setNearbyRadius] = useState(50);
     const userLocationRef = useRef(null);
+    const [userLocation, setUserLocation] = useState(null);
     const [mapRegion, setMapRegion] = useState({
         latitude: 20.5937,
         longitude: 78.9629,
@@ -208,6 +222,66 @@ export default function SearchRides() {
 
     /* ── bottom sheet animation ──────────────────── */
     const sheetY = useRef(new Animated.Value(SNAP_BOTTOM)).current;
+    const lastSnap = useRef(SNAP_BOTTOM);
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => false,
+            onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 10,
+            onPanResponderGrant: () => {
+                sheetY.setOffset(lastSnap.current);
+                sheetY.setValue(0);
+            },
+            onPanResponderMove: (_, g) => {
+                const next = lastSnap.current + g.dy;
+                if (next >= SNAP_TOP && next <= SNAP_BOTTOM) {
+                    sheetY.setOffset(0);
+                    sheetY.setValue(next);
+                }
+            },
+            onPanResponderRelease: (_, g) => {
+                sheetY.flattenOffset();
+                const swipedUp = g.dy < -60 || g.vy < -0.5;
+                const swipedDown = g.dy > 60 || g.vy > 0.5;
+                let dest = lastSnap.current;
+                if (swipedUp) dest = SNAP_TOP;
+                else if (swipedDown) dest = SNAP_BOTTOM;
+                lastSnap.current = dest;
+                setIsExpanded(dest === SNAP_TOP);
+                Animated.spring(sheetY, { toValue: dest, useNativeDriver: false, bounciness: 4, speed: 16 }).start();
+            },
+        })
+    ).current;
+
+    const collapseSheet = useCallback(() => {
+        lastSnap.current = SNAP_BOTTOM;
+        setIsExpanded(false);
+        Animated.spring(sheetY, { toValue: SNAP_BOTTOM, useNativeDriver: false, bounciness: 4, speed: 16 }).start();
+    }, [sheetY]);
+
+    const expandSheet = useCallback(() => {
+        lastSnap.current = SNAP_TOP;
+        setIsExpanded(true);
+        Animated.spring(sheetY, { toValue: SNAP_TOP, useNativeDriver: false, bounciness: 4, speed: 16 }).start();
+    }, [sheetY]);
+
+    /* search box opacity + scale driven by sheet position */
+    const searchBoxOpacity = sheetY.interpolate({
+        inputRange: [SNAP_TOP, SNAP_TOP + (SNAP_BOTTOM - SNAP_TOP) * 0.3, SNAP_BOTTOM],
+        outputRange: [0, 0, 1],
+        extrapolate: "clamp",
+    });
+    const searchBoxScale = sheetY.interpolate({
+        inputRange: [SNAP_TOP, SNAP_BOTTOM],
+        outputRange: [0.85, 1],
+        extrapolate: "clamp",
+    });
+    const searchBoxTranslateY = sheetY.interpolate({
+        inputRange: [SNAP_TOP, SNAP_BOTTOM],
+        outputRange: [-80, 0],
+        extrapolate: "clamp",
+    });
 
     /* ── fetch nearby rides on mount ─────────────── */
     useEffect(() => {
@@ -220,6 +294,7 @@ export default function SearchRides() {
                 const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
                 const { latitude, longitude } = loc.coords;
                 userLocationRef.current = { latitude, longitude };
+                setUserLocation({ latitude, longitude });
                 setMapRegion({ latitude, longitude, latitudeDelta: 0.1, longitudeDelta: 0.1 });
 
                 const [nearbyRes, bookingsRes] = await Promise.all([
@@ -236,7 +311,18 @@ export default function SearchRides() {
                     );
                     if (!cancelled) setBookedRideIds((prev) => new Set([...prev, ...booked]));
                 }
-                if (!cancelled && nearbyRes.ok && Array.isArray(nearbyData)) setNearbyRides(nearbyData);
+                if (!cancelled && nearbyRes.ok && Array.isArray(nearbyData)) {
+                    const now = new Date();
+                    const filtered = nearbyData.filter((r) => new Date(r.schedule?.departureTime) >= now);
+                    // Log km-wise ride distances from user
+                    console.log(`[Nearby] Fetched ${nearbyData.length} rides, ${filtered.length} upcoming (radius=${nearbyRadius}km):`);
+                    filtered.forEach((r, i) => {
+                        const dist = r.estimate?.userToStartKm;
+                        const dep = r.schedule?.departureTime;
+                        console.log(`  #${i + 1} "${r.route?.start?.name}" → "${r.route?.end?.name}"  |  ${dist ?? '?'} km from start  |  departs: ${dep}`);
+                    });
+                    setNearbyRides(filtered);
+                }
             } catch (e) { console.log("Nearby rides fetch failed:", e.message); }
             finally { if (!cancelled) setNearbyLoading(false); }
         })();
@@ -251,9 +337,17 @@ export default function SearchRides() {
         if (!loc || searched) return;
         setNearbyLoading(true);
         try {
-            const res = await fetch(`${BACKEND_URL}/api/rides/nearby?lat=${loc.latitude}&lng=${loc.longitude}&radiusKm=${radius}&limit=15`);
+            const res = await fetch(`${BACKEND_URL}/api/rides/nearby?lat=${loc.latitude}&lng=${loc.longitude}&radiusKm=${radius}&limit=30`);
             const data = await res.json();
-            if (res.ok && Array.isArray(data)) setNearbyRides(data);
+            if (res.ok && Array.isArray(data)) {
+                const now = new Date();
+                const filtered = data.filter((r) => new Date(r.schedule?.departureTime) >= now);
+                console.log(`[Nearby] Radius ${radius}km → ${data.length} rides, ${filtered.length} upcoming:`);
+                filtered.forEach((r, i) => {
+                    console.log(`  #${i + 1} "${r.route?.start?.name}" → "${r.route?.end?.name}"  |  ${r.estimate?.userToStartKm ?? '?'} km from start`);
+                });
+                setNearbyRides(filtered);
+            }
         } catch (e) { console.log("Radius re-fetch failed:", e.message); }
         finally { setNearbyLoading(false); }
     }, [searched, pickup]);
@@ -284,7 +378,12 @@ export default function SearchRides() {
                     .map((b) => b.ride?._id?.toString()).filter(Boolean),
             );
             setBookedRideIds(booked);
-            setRides((Array.isArray(searchData) ? searchData : []).filter((r) => r.seatsAvailable >= seats));
+            const now = new Date();
+            setRides(
+                (Array.isArray(searchData) ? searchData : [])
+                    .filter((r) => r.seatsAvailable >= seats)
+                    .filter((r) => new Date(r.schedule?.departureTime) >= now),
+            );
         } catch (e) { console.error("Search error:", e); setRides([]); }
         finally { setLoading(false); }
     }, [pickup, drop, date, seats, user?.id]);
@@ -396,7 +495,7 @@ export default function SearchRides() {
                                 )}
                             </View>
                             <Text style={[tw`text-xs font-bold`, { color: colors.textMuted }]}>
-                                {Number(item.estimate?.distanceKm || 0).toFixed(1)} km away
+                                {Number(item.estimate?.userToStartKm ?? 0).toFixed(1)} km from start
                             </Text>
                         </View>
                     </View>
@@ -425,18 +524,49 @@ export default function SearchRides() {
                 provider={PROVIDER_DEFAULT}
                 style={StyleSheet.absoluteFill}
                 region={mapRegion}
-                showsUserLocation
+                showsUserLocation={false}
                 showsMyLocationButton={false}
                 scrollEnabled={false}
                 zoomEnabled={false}
                 rotateEnabled={false}
                 pitchEnabled={false}
                 userInterfaceStyle={scheme === "dark" ? "dark" : "light"}
-            />
+            >
+                {/* Custom user profile pin */}
+                {userLocation && (
+                    <Marker
+                        coordinate={{
+                            latitude: userLocation.latitude,
+                            longitude: userLocation.longitude,
+                        }}
+                        anchor={{ x: 0.5, y: 1 }}
+                    >
+                        <View style={styles.pinContainer}>
+                            <View style={[styles.pinBubble, { borderColor: colors.primary }]}>
+                                {user?.imageUrl ? (
+                                    <Image source={{ uri: user.imageUrl }} style={styles.pinImage} />
+                                ) : (
+                                    <View style={[styles.pinImage, { backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }]}>
+                                        <Ionicons name="person" size={16} color="#fff" />
+                                    </View>
+                                )}
+                            </View>
+                            <View style={[styles.pinArrow, { borderTopColor: colors.primary }]} />
+                        </View>
+                    </Marker>
+                )}
+            </MapView>
 
             {/* ── Top Search Overlay ───────────────── */}
-            <View
-                style={[tw`absolute top-0 left-0 right-0 z-20 pt-12 px-4 pb-3`]}
+            <Animated.View
+                style={[
+                    tw`absolute top-0 left-0 right-0 z-20 pt-12 px-4 pb-3`,
+                    {
+                        opacity: searchBoxOpacity,
+                        transform: [{ scale: searchBoxScale }, { translateY: searchBoxTranslateY }],
+                    },
+                ]}
+                pointerEvents={isExpanded ? "none" : "auto"}
             >
                 <View
                     style={[
@@ -525,7 +655,7 @@ export default function SearchRides() {
                         )}
                     </TouchableOpacity>
                 </View>
-            </View>
+            </Animated.View>
 
             {/* ── Bottom Sheet ─────────────────────── */}
             <Animated.View
@@ -547,9 +677,22 @@ export default function SearchRides() {
                 ]}
             >
                 {/* Drag Handle */}
-                <View style={tw`w-full items-center pt-3 pb-2`}>
+                <View {...panResponder.panHandlers} style={tw`w-full items-center pt-3 pb-2`}>
                     <View style={[tw`w-10 h-1 rounded-full`, { backgroundColor: colors.textMuted + "60" }]} />
                 </View>
+
+                {/* Back button when expanded */}
+                {isExpanded && (
+                    <View style={[tw`flex-row items-center px-5 pb-2`, { gap: 10 }]}>
+                        <TouchableOpacity
+                            onPress={collapseSheet}
+                            style={[tw`flex-row items-center px-3 py-2 rounded-full`, { backgroundColor: colors.surfaceMuted, gap: 6 }]}
+                        >
+                            <Ionicons name="chevron-down" size={18} color={colors.textPrimary} />
+                            <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>Back</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
 
                     {/* ── Rides list ────────────────── */}
                     <ScrollView contentContainerStyle={tw`px-5 pt-1 pb-24`} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bounces>
@@ -604,52 +747,53 @@ export default function SearchRides() {
                                         <Text style={[tw`text-xs flex-1`, { color: "#ef4444" }]}>Location access denied — search manually above.</Text>
                                     </View>
                                 )}
+
+                                {/* Radius header + pills — ALWAYS visible */}
+                                <View style={[tw`flex-row items-center mb-3`, { gap: 6 }]}>
+                                    <Ionicons name="location" size={14} color={colors.primary} />
+                                    <Text style={[tw`text-xs font-extrabold tracking-widest`, { color: colors.primary }]}>WITHIN {nearbyRadius} KM</Text>
+                                </View>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`} contentContainerStyle={{ gap: 8 }}>
+                                    {[25, 50, 100, 200, 500].map((km) => (
+                                        <TouchableOpacity
+                                            key={km}
+                                            onPress={() => { setNearbyRadius(km); fetchNearbyWithRadius(km); }}
+                                            style={[
+                                                tw`py-1.5 px-3 rounded-full`,
+                                                {
+                                                    backgroundColor: nearbyRadius === km ? colors.primary : colors.surfaceMuted,
+                                                    borderWidth: 1,
+                                                    borderColor: nearbyRadius === km ? colors.primary : colors.border,
+                                                },
+                                            ]}
+                                        >
+                                            <Text style={[tw`text-xs font-bold`, { color: nearbyRadius === km ? "#fff" : colors.textSecondary }]}>
+                                                {km} km
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+
                                 {nearbyLoading && (
                                     <View style={tw`items-center py-8`}>
                                         <ActivityIndicator size="small" color={colors.primary} />
                                         <Text style={[tw`text-xs mt-2`, { color: colors.textMuted }]}>Finding rides near you…</Text>
                                     </View>
                                 )}
-                                {!nearbyLoading && nearbyRides.length > 0 && (
-                                    <>
-                                        <View style={[tw`flex-row items-center mb-3`, { gap: 6 }]}>
-                                            <Ionicons name="location" size={14} color={colors.primary} />
-                                            <Text style={[tw`text-xs font-extrabold tracking-widest`, { color: colors.primary }]}>WITHIN {nearbyRadius} KM</Text>
-                                        </View>
-                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`} contentContainerStyle={{ gap: 8 }}>
-                                            {[25, 50, 100, 200, 500].map((km) => (
-                                                <TouchableOpacity
-                                                    key={km}
-                                                    onPress={() => { setNearbyRadius(km); fetchNearbyWithRadius(km); }}
-                                                    style={[
-                                                        tw`py-1.5 px-3 rounded-full`,
-                                                        {
-                                                            backgroundColor: nearbyRadius === km ? colors.primary : colors.surfaceMuted,
-                                                            borderWidth: 1,
-                                                            borderColor: nearbyRadius === km ? colors.primary : colors.border,
-                                                        },
-                                                    ]}
-                                                >
-                                                    <Text style={[tw`text-xs font-bold`, { color: nearbyRadius === km ? "#fff" : colors.textSecondary }]}>
-                                                        {km} km
-                                                    </Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </ScrollView>
-                                        {nearbyRides.map((r) => renderRide(r))}
-                                    </>
-                                )}
+                                {!nearbyLoading && nearbyRides.length > 0 && nearbyRides.map((r) => renderRide(r))}
                                 {!nearbyLoading && nearbyRides.length === 0 && !locationDenied && (
-                                    <View style={tw`items-center mt-10`}>
+                                    <View style={tw`items-center mt-6`}>
                                         <Ionicons name="search-outline" size={48} color={colors.textMuted} />
-                                        <Text style={[tw`text-base font-semibold mt-4`, { color: colors.textSecondary }]}>No rides available</Text>
-                                        <Text style={[tw`text-sm mt-1 text-center`, { color: colors.textMuted }]}>Try searching a specific route</Text>
+                                        <Text style={[tw`text-base font-semibold mt-4`, { color: colors.textSecondary }]}>No rides within {nearbyRadius} km</Text>
+                                        <Text style={[tw`text-sm mt-1 text-center`, { color: colors.textMuted }]}>Try increasing the radius or search a specific route</Text>
                                     </View>
                                 )}
                             </>
                         )}
                     </ScrollView>
             </Animated.View>
+
+            {/* ── Expand hint FAB (only when collapsed & not expanded) ── */}
 
             {/* ── Date Picker ─────────────────────── */}
             {showDatePicker && (
@@ -682,5 +826,36 @@ const styles = StyleSheet.create({
         right: 0,
         bottom: 0,
         zIndex: 30,
+    },
+    pinContainer: {
+        alignItems: "center",
+    },
+    pinBubble: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        borderWidth: 3,
+        overflow: "hidden",
+        backgroundColor: "#fff",
+        elevation: 5,
+        shadowColor: "#000",
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 2 },
+    },
+    pinImage: {
+        width: "100%",
+        height: "100%",
+        borderRadius: 17,
+    },
+    pinArrow: {
+        width: 0,
+        height: 0,
+        borderLeftWidth: 8,
+        borderRightWidth: 8,
+        borderTopWidth: 10,
+        borderLeftColor: "transparent",
+        borderRightColor: "transparent",
+        marginTop: -2,
     },
 });
