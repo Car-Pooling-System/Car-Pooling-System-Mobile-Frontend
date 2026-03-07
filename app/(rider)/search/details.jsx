@@ -40,14 +40,12 @@ export default function RideSearchDetails() {
     const [booked, setBooked] = useState(isBookedParam === "1");
     const [requested, setRequested] = useState(isRequestedParam === "1");
     const [scrollEnabled, setScrollEnabled] = useState(true);
-    const [selectedSeat, setSelectedSeat] = useState("any");
-    const [showSeatOptions, setShowSeatOptions] = useState(false);
-
     // Multi-passenger booking state
     const [showBookingForm, setShowBookingForm] = useState(false);
+    const [bookingStep, setBookingStep] = useState(1); // 1 = rider details, 2 = seat assignment
     const [riderIsPartOfRide, setRiderIsPartOfRide] = useState(true);
-    const [selfSeatPreference, setSelfSeatPreference] = useState("any");
     const [additionalPassengers, setAdditionalPassengers] = useState([]);
+    const [seatSelections, setSeatSelections] = useState({}); // { "self": seatType, 0: seatType, 1: seatType }
 
     const SEAT_TYPES_LIST = [
         { type: "front",       label: "Front Seat" },
@@ -57,6 +55,31 @@ export default function RideSearchDetails() {
         { type: "thirdRow",    label: "Third Row Seat" },
         { type: "any",         label: "Any Seat" },
     ];
+
+    /** Compute remaining seats per type, excluding one rider's own selection */
+    const computeAvailableSeats = (excludeKey) => {
+        const remaining = {};
+        (ride?.seats?.seatTypes || []).forEach(st => {
+            if (st.count > 0) remaining[st.type] = st.count;
+        });
+        // Subtract already confirmed/requested passengers on the ride
+        (ride?.passengers || []).forEach(p => {
+            if ((p.status === 'confirmed' || p.status === 'requested') && p.seatType && p.seatType !== 'any') {
+                if (remaining[p.seatType] !== undefined) {
+                    remaining[p.seatType] = Math.max(0, remaining[p.seatType] - 1);
+                }
+            }
+        });
+        // Subtract other riders' picks in this booking
+        Object.entries(seatSelections).forEach(([key, type]) => {
+            if (String(key) !== String(excludeKey) && type && type !== 'any') {
+                if (remaining[type] !== undefined) {
+                    remaining[type] = Math.max(0, remaining[type] - 1);
+                }
+            }
+        });
+        return remaining;
+    };
 
     const isDriver = isDriverParam === "1";
 
@@ -113,16 +136,16 @@ export default function RideSearchDetails() {
 
     /* ── Open booking form ─────────────────────────── */
     const openBookingForm = () => {
-        // Initialize additional passengers based on how many extra seats needed
         const extraSeats = riderIsPartOfRide ? totalSeatsWanted - 1 : totalSeatsWanted;
         const initialPassengers = Array.from({ length: Math.max(0, extraSeats) }, () => ({
             name: "",
             age: "",
             sex: "",
             email: "",
-            seatPreference: "any",
         }));
         setAdditionalPassengers(initialPassengers);
+        setSeatSelections({});
+        setBookingStep(1);
         setShowBookingForm(true);
     };
 
@@ -137,7 +160,7 @@ export default function RideSearchDetails() {
     const addGuestSlot = () => {
         setAdditionalPassengers((prev) => [
             ...prev,
-            { name: "", age: "", sex: "", email: "", seatPreference: "any" },
+            { name: "", age: "", sex: "", email: "" },
         ]);
     };
 
@@ -178,14 +201,14 @@ export default function RideSearchDetails() {
                     },
                     pickup: { lat: parseFloat(pickupLat), lng: parseFloat(pickupLng) },
                     drop:   { lat: parseFloat(dropLat),   lng: parseFloat(dropLng) },
-                    seatPreference: riderIsPartOfRide ? selfSeatPreference : "any",
+                    seatPreference: riderIsPartOfRide ? (seatSelections["self"] || "any") : "any",
                     riderIsPartOfRide,
-                    additionalPassengers: additionalPassengers.map((g) => ({
+                    additionalPassengers: additionalPassengers.map((g, idx) => ({
                         name: g.name.trim(),
                         age: g.age ? parseInt(g.age) : null,
                         sex: g.sex || "",
                         email: g.email.trim(),
-                        seatPreference: g.seatPreference || "any",
+                        seatPreference: seatSelections[idx] || "any",
                     })),
                 }),
             });
@@ -804,19 +827,27 @@ export default function RideSearchDetails() {
                 <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
                     {/* Modal Header */}
                     <View style={[tw`flex-row items-center px-5 pt-12 pb-4 border-b`, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                        <TouchableOpacity onPress={() => setShowBookingForm(false)} style={tw`mr-4`}>
-                            <Ionicons name="close" size={24} color={colors.textPrimary} />
+                        <TouchableOpacity onPress={() => { if (bookingStep > 1) setBookingStep(bookingStep - 1); else setShowBookingForm(false); }} style={tw`mr-4`}>
+                            <Ionicons name={bookingStep > 1 ? "arrow-back" : "close"} size={24} color={colors.textPrimary} />
                         </TouchableOpacity>
                         <View style={tw`flex-1`}>
-                            <Text style={[tw`text-lg font-bold`, { color: colors.textPrimary }]}>Book Ride</Text>
-                            <Text style={[tw`text-xs`, { color: colors.textMuted }]}>
-                                ₹{estimatedFare || ride?.pricing?.baseFare} per person · {ride?.seats?.available} seats available
+                            <Text style={[tw`text-lg font-bold`, { color: colors.textPrimary }]}>
+                                {bookingStep === 1 ? "Book Ride" : "Choose Seats"}
                             </Text>
+                            <Text style={[tw`text-xs`, { color: colors.textMuted }]}>
+                                Step {bookingStep} of 2 · ₹{estimatedFare || ride?.pricing?.baseFare} per person
+                            </Text>
+                        </View>
+                        <View style={tw`flex-row items-center gap-1.5`}>
+                            <View style={[tw`w-2 h-2 rounded-full`, { backgroundColor: colors.primary }]} />
+                            <View style={[tw`w-2 h-2 rounded-full`, { backgroundColor: bookingStep >= 2 ? colors.primary : colors.border }]} />
                         </View>
                     </View>
 
                     <ScrollView contentContainerStyle={tw`px-5 pt-4 pb-32`} showsVerticalScrollIndicator={false}>
-                        {/* ── Are you part of this ride? ── */}
+                      {bookingStep === 1 ? (
+                        <>
+                        {/* ── Step 1: Rider Details ── */}
                         <Text style={[tw`text-xs font-extrabold tracking-widest mb-3`, { color: colors.textSecondary }]}>ARE YOU RIDING?</Text>
                         <View style={tw`flex-row gap-3 mb-5`}>
                             <TouchableOpacity
@@ -827,7 +858,7 @@ export default function RideSearchDetails() {
                                     setAdditionalPassengers((prev) => {
                                         if (prev.length > extra) return prev.slice(0, extra);
                                         const toAdd = extra - prev.length;
-                                        return [...prev, ...Array.from({ length: toAdd }, () => ({ name: "", age: "", sex: "", email: "", seatPreference: "any" }))];
+                                        return [...prev, ...Array.from({ length: toAdd }, () => ({ name: "", age: "", sex: "", email: "" }))];
                                     });
                                 }}
                                 activeOpacity={0.8}
@@ -851,7 +882,7 @@ export default function RideSearchDetails() {
                                         const needed = Math.max(1, totalSeatsWanted);
                                         if (prev.length >= needed) return prev.slice(0, needed);
                                         const toAdd = needed - prev.length;
-                                        return [...prev, ...Array.from({ length: toAdd }, () => ({ name: "", age: "", sex: "", email: "", seatPreference: "any" }))];
+                                        return [...prev, ...Array.from({ length: toAdd }, () => ({ name: "", age: "", sex: "", email: "" }))];
                                     });
                                 }}
                                 activeOpacity={0.8}
@@ -869,36 +900,22 @@ export default function RideSearchDetails() {
                             </TouchableOpacity>
                         </View>
 
-                        {/* ── Your seat (when rider is part) ── */}
-                        {riderIsPartOfRide && (ride?.seats?.seatTypes?.length > 0) && (
+                        {/* ── You (when rider is part) ── */}
+                        {riderIsPartOfRide && (
                             <View style={[tw`rounded-2xl border mb-5 overflow-hidden`, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                                <View style={[tw`px-4 py-3 flex-row items-center justify-between`, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                                <View style={[tw`px-4 py-3 flex-row items-center justify-between`]}>
                                     <View style={tw`flex-row items-center gap-2`}>
                                         <View style={[tw`w-8 h-8 rounded-full items-center justify-center`, { backgroundColor: colors.primarySoft }]}>
                                             <Ionicons name="person" size={16} color={colors.primary} />
                                         </View>
                                         <View>
-                                            <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>Your Seat</Text>
-                                            <Text style={[tw`text-[10px]`, { color: colors.textMuted }]}>{user?.fullName || "You"}</Text>
+                                            <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{user?.fullName || "You"}</Text>
+                                            <Text style={[tw`text-[10px]`, { color: colors.textMuted }]}>Your account</Text>
                                         </View>
                                     </View>
                                     <View style={[tw`px-2.5 py-1 rounded-full`, { backgroundColor: colors.successSoft || "rgba(7,136,41,0.1)" }]}>
                                         <Text style={[tw`text-[10px] font-bold`, { color: colors.success }]}>YOUR ACCOUNT</Text>
                                     </View>
-                                </View>
-                                <View style={tw`px-4 py-3 flex-row flex-wrap gap-2`}>
-                                    {(ride.seats?.seatTypes || []).filter(st => st.count > 0).map((st) => {
-                                        const sel = selfSeatPreference === st.type;
-                                        return (
-                                            <TouchableOpacity
-                                                key={st.type}
-                                                onPress={() => setSelfSeatPreference(st.type)}
-                                                style={[tw`px-3 py-2 rounded-xl border`, { borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primarySoft : 'transparent' }]}
-                                            >
-                                                <Text style={[tw`text-xs`, { color: sel ? colors.primary : colors.textPrimary, fontWeight: sel ? '700' : '500' }]}>{st.label || st.type}</Text>
-                                            </TouchableOpacity>
-                                        );
-                                    })}
                                 </View>
                             </View>
                         )}
@@ -990,27 +1007,6 @@ export default function RideSearchDetails() {
                                             style={[tw`text-sm px-3 py-2.5 rounded-xl border`, { backgroundColor: colors.surfaceMuted, borderColor: colors.border, color: colors.textPrimary }]}
                                         />
                                     </View>
-
-                                    {/* Seat preference */}
-                                    {(ride?.seats?.seatTypes?.length > 0) && (
-                                        <View>
-                                            <Text style={[tw`text-[10px] font-bold uppercase mb-1`, { color: colors.textMuted }]}>Seat Preference</Text>
-                                            <View style={tw`flex-row flex-wrap gap-2`}>
-                                                {(ride.seats?.seatTypes || []).filter(st => st.count > 0).map((st) => {
-                                                    const sel = guest.seatPreference === st.type;
-                                                    return (
-                                                        <TouchableOpacity
-                                                            key={st.type}
-                                                            onPress={() => updateGuest(idx, "seatPreference", st.type)}
-                                                            style={[tw`px-3 py-2 rounded-xl border`, { borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primarySoft : 'transparent' }]}
-                                                        >
-                                                            <Text style={[tw`text-xs`, { color: sel ? colors.primary : colors.textPrimary, fontWeight: sel ? '700' : '500' }]}>{st.label || st.type}</Text>
-                                                        </TouchableOpacity>
-                                                    );
-                                                })}
-                                            </View>
-                                        </View>
-                                    )}
                                 </View>
                             </View>
                         ))}
@@ -1044,27 +1040,185 @@ export default function RideSearchDetails() {
                                 </Text>
                             </View>
                         </View>
+                        </>
+                      ) : (
+                        <>
+                        {/* ── Step 2: Seat Assignment ── */}
+                        <Text style={[tw`text-xs font-extrabold tracking-widest mb-1`, { color: colors.textSecondary }]}>ASSIGN SEATS</Text>
+                        <Text style={[tw`text-xs mb-5`, { color: colors.textMuted }]}>
+                            Choose a seat for each rider. Already-taken seats are greyed out.
+                        </Text>
+
+                        {/* Self seat assignment */}
+                        {riderIsPartOfRide && (() => {
+                            const avail = computeAvailableSeats("self");
+                            const hasSeatTypes = (ride?.seats?.seatTypes || []).some(st => st.count > 0 && st.type !== 'any');
+                            return (
+                                <View style={[tw`rounded-2xl border mb-4 overflow-hidden`, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                                    <View style={[tw`px-4 py-3 flex-row items-center gap-2`, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                                        <View style={[tw`w-8 h-8 rounded-full items-center justify-center`, { backgroundColor: colors.primarySoft }]}>
+                                            <Ionicons name="person" size={16} color={colors.primary} />
+                                        </View>
+                                        <Text style={[tw`text-sm font-bold flex-1`, { color: colors.textPrimary }]}>{user?.fullName || "You"}</Text>
+                                        {seatSelections["self"] && seatSelections["self"] !== "any" && (
+                                            <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                                <Text style={[tw`text-[10px] font-bold`, { color: colors.primary }]}>
+                                                    {SEAT_TYPES_LIST.find(s => s.type === seatSelections["self"])?.label || seatSelections["self"]}
+                                                </Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                    <View style={tw`px-4 py-3 flex-row flex-wrap gap-2`}>
+                                        {hasSeatTypes && (ride.seats?.seatTypes || []).filter(st => st.count > 0 && st.type !== 'any').map((st) => {
+                                            const sel = seatSelections["self"] === st.type;
+                                            const remaining = avail[st.type] ?? 0;
+                                            const disabled = !sel && remaining <= 0;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={st.type}
+                                                    disabled={disabled}
+                                                    onPress={() => setSeatSelections(prev => ({ ...prev, "self": st.type }))}
+                                                    style={[tw`px-3 py-2 rounded-xl border`, {
+                                                        borderColor: sel ? colors.primary : disabled ? colors.border : colors.border,
+                                                        backgroundColor: sel ? colors.primarySoft : disabled ? colors.surfaceMuted : 'transparent',
+                                                        opacity: disabled ? 0.4 : 1,
+                                                    }]}
+                                                >
+                                                    <Text style={[tw`text-xs`, { color: sel ? colors.primary : disabled ? colors.textMuted : colors.textPrimary, fontWeight: sel ? '700' : '500' }]}>
+                                                        {st.label || st.type}
+                                                    </Text>
+                                                    <Text style={[tw`text-[9px] mt-0.5`, { color: sel ? colors.primary : colors.textMuted }]}>
+                                                        {remaining} left
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                        <TouchableOpacity
+                                            onPress={() => setSeatSelections(prev => ({ ...prev, "self": "any" }))}
+                                            style={[tw`px-3 py-2 rounded-xl border`, {
+                                                borderColor: (!seatSelections["self"] || seatSelections["self"] === "any") ? colors.primary : colors.border,
+                                                backgroundColor: (!seatSelections["self"] || seatSelections["self"] === "any") ? colors.primarySoft : 'transparent',
+                                            }]}
+                                        >
+                                            <Text style={[tw`text-xs`, { color: (!seatSelections["self"] || seatSelections["self"] === "any") ? colors.primary : colors.textPrimary, fontWeight: (!seatSelections["self"] || seatSelections["self"] === "any") ? '700' : '500' }]}>Any Seat</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            );
+                        })()}
+
+                        {/* Guest seat assignments */}
+                        {additionalPassengers.map((guest, idx) => {
+                            const avail = computeAvailableSeats(idx);
+                            const hasSeatTypes = (ride?.seats?.seatTypes || []).some(st => st.count > 0 && st.type !== 'any');
+                            return (
+                                <View
+                                    key={idx}
+                                    style={[tw`rounded-2xl border mb-4 overflow-hidden`, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                                >
+                                    <View style={[tw`px-4 py-3 flex-row items-center gap-2`, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                                        <View style={[tw`w-7 h-7 rounded-full items-center justify-center`, { backgroundColor: colors.primary }]}>
+                                            <Text style={tw`text-white text-xs font-bold`}>{idx + 1}</Text>
+                                        </View>
+                                        <Text style={[tw`text-sm font-bold flex-1`, { color: colors.textPrimary }]}>
+                                            {guest.name.trim() || `Rider ${idx + 1}`}
+                                        </Text>
+                                        {seatSelections[idx] && seatSelections[idx] !== "any" && (
+                                            <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                                <Text style={[tw`text-[10px] font-bold`, { color: colors.primary }]}>
+                                                    {SEAT_TYPES_LIST.find(s => s.type === seatSelections[idx])?.label || seatSelections[idx]}
+                                                </Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                    <View style={tw`px-4 py-3 flex-row flex-wrap gap-2`}>
+                                        {hasSeatTypes && (ride.seats?.seatTypes || []).filter(st => st.count > 0 && st.type !== 'any').map((st) => {
+                                            const sel = seatSelections[idx] === st.type;
+                                            const remaining = avail[st.type] ?? 0;
+                                            const disabled = !sel && remaining <= 0;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={st.type}
+                                                    disabled={disabled}
+                                                    onPress={() => setSeatSelections(prev => ({ ...prev, [idx]: st.type }))}
+                                                    style={[tw`px-3 py-2 rounded-xl border`, {
+                                                        borderColor: sel ? colors.primary : disabled ? colors.border : colors.border,
+                                                        backgroundColor: sel ? colors.primarySoft : disabled ? colors.surfaceMuted : 'transparent',
+                                                        opacity: disabled ? 0.4 : 1,
+                                                    }]}
+                                                >
+                                                    <Text style={[tw`text-xs`, { color: sel ? colors.primary : disabled ? colors.textMuted : colors.textPrimary, fontWeight: sel ? '700' : '500' }]}>
+                                                        {st.label || st.type}
+                                                    </Text>
+                                                    <Text style={[tw`text-[9px] mt-0.5`, { color: sel ? colors.primary : colors.textMuted }]}>
+                                                        {remaining} left
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                        <TouchableOpacity
+                                            onPress={() => setSeatSelections(prev => ({ ...prev, [idx]: "any" }))}
+                                            style={[tw`px-3 py-2 rounded-xl border`, {
+                                                borderColor: (!seatSelections[idx] || seatSelections[idx] === "any") ? colors.primary : colors.border,
+                                                backgroundColor: (!seatSelections[idx] || seatSelections[idx] === "any") ? colors.primarySoft : 'transparent',
+                                            }]}
+                                        >
+                                            <Text style={[tw`text-xs`, { color: (!seatSelections[idx] || seatSelections[idx] === "any") ? colors.primary : colors.textPrimary, fontWeight: (!seatSelections[idx] || seatSelections[idx] === "any") ? '700' : '500' }]}>Any Seat</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            );
+                        })}
+                        </>
+                      )}
                     </ScrollView>
 
-                    {/* Modal Submit Button */}
+                    {/* Modal Footer */}
                     <View style={[tw`absolute bottom-0 left-0 right-0 px-5 pb-8 pt-4`, { backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }]}>
-                        <TouchableOpacity
-                            onPress={handleRequest}
-                            disabled={booking}
-                            activeOpacity={0.85}
-                            style={[tw`py-3.5 rounded-xl items-center flex-row justify-center gap-2`, { backgroundColor: colors.primary }]}
-                        >
-                            {booking ? (
-                                <ActivityIndicator size="small" color="#fff" />
-                            ) : (
-                                <>
-                                    <Ionicons name="checkmark-circle" size={18} color="#fff" />
-                                    <Text style={[tw`text-sm font-extrabold`, { color: "#fff" }]}>
-                                        Request {(riderIsPartOfRide ? 1 : 0) + additionalPassengers.length} Seat{((riderIsPartOfRide ? 1 : 0) + additionalPassengers.length) !== 1 ? "s" : ""} · ₹{((parseInt(estimatedFare) || ride?.pricing?.baseFare || 0) * ((riderIsPartOfRide ? 1 : 0) + additionalPassengers.length))}
-                                    </Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
+                        {bookingStep === 1 ? (
+                            <TouchableOpacity
+                                onPress={() => {
+                                    for (let i = 0; i < additionalPassengers.length; i++) {
+                                        const g = additionalPassengers[i];
+                                        if (!g.name.trim()) { Alert.alert("Missing info", `Please enter a name for Rider ${i + 1}.`); return; }
+                                        if (!g.email.trim()) { Alert.alert("Missing info", `Please enter an email for ${g.name || `Rider ${i + 1}`}.`); return; }
+                                    }
+                                    if ((riderIsPartOfRide ? 1 : 0) + additionalPassengers.length === 0) {
+                                        Alert.alert("No riders", "Please add at least one rider.");
+                                        return;
+                                    }
+                                    if (!(ride?.seats?.seatTypes?.some(st => st.count > 0 && st.type !== 'any'))) {
+                                        handleRequest();
+                                        return;
+                                    }
+                                    setBookingStep(2);
+                                }}
+                                activeOpacity={0.85}
+                                style={[tw`py-3.5 rounded-xl items-center flex-row justify-center gap-2`, { backgroundColor: colors.primary }]}
+                            >
+                                <Text style={[tw`text-sm font-extrabold`, { color: "#fff" }]}>
+                                    Next: Choose Seats →
+                                </Text>
+                            </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity
+                                onPress={handleRequest}
+                                disabled={booking}
+                                activeOpacity={0.85}
+                                style={[tw`py-3.5 rounded-xl items-center flex-row justify-center gap-2`, { backgroundColor: colors.primary }]}
+                            >
+                                {booking ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                    <>
+                                        <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                                        <Text style={[tw`text-sm font-extrabold`, { color: "#fff" }]}>
+                                            Request {(riderIsPartOfRide ? 1 : 0) + additionalPassengers.length} Seat{((riderIsPartOfRide ? 1 : 0) + additionalPassengers.length) !== 1 ? "s" : ""} · ₹{((parseInt(estimatedFare) || ride?.pricing?.baseFare || 0) * ((riderIsPartOfRide ? 1 : 0) + additionalPassengers.length))}
+                                        </Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        )}
                     </View>
                 </View>
             </Modal>
