@@ -83,6 +83,66 @@ export default function RideSearchDetails() {
 
     const isDriver = isDriverParam === "1";
 
+    /* ── Chat helpers ── */
+    const openDriverChat = async () => {
+        const driverData = ride?.driver;
+        if (!driverData) return;
+        try {
+            console.log("[Chat] openDriverChat →", driverData.name, driverData.userId);
+            const res = await fetch(`${BACKEND_URL}/api/chat/conversations/direct`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    participants: [
+                        { userId: user.id, name: user.fullName || "Rider", profileImage: user.imageUrl, role: "rider" },
+                        { userId: driverData.userId, name: driverData.name, profileImage: driverData.profileImage, role: "driver" },
+                    ],
+                }),
+            });
+            const data = await res.json();
+            console.log("[Chat] DM response:", JSON.stringify(data).slice(0, 200));
+            if (!res.ok) throw new Error(data.message);
+            const convo = data.conversation || data;
+            router.push({
+                pathname: "/(rider)/chat/room",
+                params: {
+                    conversationId: convo._id,
+                    title: driverData.name || "Driver",
+                    image: driverData.profileImage || "",
+                    type: "direct",
+                },
+            });
+        } catch (e) {
+            Alert.alert("Error", e.message || "Could not open chat");
+        }
+    };
+
+    const openGroupChat = async () => {
+        try {
+            console.log("[Chat] openGroupChat → ride", rideId);
+            const res = await fetch(`${BACKEND_URL}/api/chat/conversations/group`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ rideId }),
+            });
+            const data = await res.json();
+            console.log("[Chat] Group response:", JSON.stringify(data).slice(0, 200));
+            if (!res.ok) throw new Error(data.message);
+            const convo = data.conversation || data;
+            router.push({
+                pathname: "/(rider)/chat/room",
+                params: {
+                    conversationId: convo._id,
+                    title: convo.title || "Group Chat",
+                    image: "",
+                    type: "group",
+                },
+            });
+        } catch (e) {
+            Alert.alert("Error", e.message || "Could not open group chat");
+        }
+    };
+
     /* ── Fetch ride details ────────────────────── */
     const fetchRide = useCallback(async () => {
         try {
@@ -636,6 +696,34 @@ export default function RideSearchDetails() {
                             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                         </View>
                     </TouchableOpacity>
+
+                    {/* ── Chat buttons ──────────────── */}
+                    {(booked || requested) && !isDriver && (
+                        <View style={tw`flex-row gap-3 mt-4`}>
+                            <TouchableOpacity
+                                onPress={openDriverChat}
+                                style={[
+                                    tw`flex-1 flex-row items-center justify-center gap-2 py-3 rounded-xl`,
+                                    { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary },
+                                ]}
+                            >
+                                <Ionicons name="chatbubble" size={16} color={colors.primary} />
+                                <Text style={[tw`font-bold text-sm`, { color: colors.primary }]}>Message Driver</Text>
+                            </TouchableOpacity>
+                            {booked && (
+                                <TouchableOpacity
+                                    onPress={openGroupChat}
+                                    style={[
+                                        tw`flex-1 flex-row items-center justify-center gap-2 py-3 rounded-xl`,
+                                        { backgroundColor: colors.primary },
+                                    ]}
+                                >
+                                    <Ionicons name="chatbubbles" size={16} color="white" />
+                                    <Text style={tw`text-white font-bold text-sm`}>Group Chat</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    )}
 
                     {/* ── Vehicle card ─────────────── */}
                     {(vehicle.brand || vehicle.model) && (

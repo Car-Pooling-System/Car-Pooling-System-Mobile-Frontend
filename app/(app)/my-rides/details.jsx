@@ -80,6 +80,64 @@ export default function RideDetails() {
     const [showSeatPicker, setShowSeatPicker] = useState(null); // passengerUserId
     const [changingSeat, setChangingSeat] = useState(null);
 
+    /* ── Chat helpers ── */
+    const openDMChat = async (passenger) => {
+        try {
+            console.log("[Chat] openDMChat →", passenger.name, passenger.userId);
+            const res = await fetch(`${BACKEND_URL}/api/chat/conversations/direct`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    participants: [
+                        { userId: user.id, name: user.fullName || "Driver", profileImage: user.imageUrl, role: "driver" },
+                        { userId: passenger.userId, name: passenger.name, profileImage: passenger.profileImage, role: "rider" },
+                    ],
+                }),
+            });
+            const data = await res.json();
+            console.log("[Chat] DM response:", JSON.stringify(data).slice(0, 200));
+            if (!res.ok) throw new Error(data.message);
+            const convo = data.conversation || data;
+            router.push({
+                pathname: "/(app)/chat/room",
+                params: {
+                    conversationId: convo._id,
+                    title: passenger.name,
+                    image: passenger.profileImage || "",
+                    type: "direct",
+                },
+            });
+        } catch (e) {
+            Alert.alert("Error", e.message || "Could not open chat");
+        }
+    };
+
+    const openGroupChat = async () => {
+        try {
+            console.log("[Chat] openGroupChat → ride", ride._id);
+            const res = await fetch(`${BACKEND_URL}/api/chat/conversations/group`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ rideId: ride._id }),
+            });
+            const data = await res.json();
+            console.log("[Chat] Group response:", JSON.stringify(data).slice(0, 200));
+            if (!res.ok) throw new Error(data.message);
+            const convo = data.conversation || data;
+            router.push({
+                pathname: "/(app)/chat/room",
+                params: {
+                    conversationId: convo._id,
+                    title: convo.title || "Group Chat",
+                    image: "",
+                    type: "group",
+                },
+            });
+        } catch (e) {
+            Alert.alert("Error", e.message || "Could not open group chat");
+        }
+    };
+
     const haversineKm = (lat1, lon1, lat2, lon2) => {
         const R = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -829,7 +887,7 @@ export default function RideDetails() {
                                                 )}
                                             </View>
                                         </View>
-                                        <TouchableOpacity style={[tw`p-2 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                        <TouchableOpacity onPress={() => openDMChat(passenger)} style={[tw`p-2 rounded-full`, { backgroundColor: colors.primarySoft }]}>
                                             <Ionicons name="chatbubble" size={16} color={colors.primary} />
                                         </TouchableOpacity>
                                     </View>
@@ -837,6 +895,14 @@ export default function RideDetails() {
                             ) : requestedPassengers.length === 0 ? (
                                 <Text style={[tw`text-sm italic text-center py-4`, { color: colors.textSecondary }]}>No passengers or requests yet.</Text>
                             ) : null}
+
+                            {/* Group Chat Button */}
+                            {confirmedPassengers.length > 0 && (
+                                <TouchableOpacity onPress={openGroupChat} style={[tw`flex-row items-center justify-center gap-2 mt-4 py-3 rounded-xl`, { backgroundColor: colors.primary }]}>
+                                    <Ionicons name="chatbubbles" size={18} color="white" />
+                                    <Text style={tw`text-white font-bold text-sm`}>Group Chat</Text>
+                                </TouchableOpacity>
+                            )}
                         </View>
                         </View>
                     )}
@@ -1085,7 +1151,7 @@ export default function RideDetails() {
                                     )}
                                 </View>
                                 {!activeSeat.isDriver && (
-                                    <TouchableOpacity style={[tw`p-2 rounded-full`, { backgroundColor: colors.primary }]}>
+                                    <TouchableOpacity onPress={() => openDMChat(activeSeat.passenger)} style={[tw`p-2 rounded-full`, { backgroundColor: colors.primary }]}>
                                         <Ionicons name="chatbubble" size={14} color="white" />
                                     </TouchableOpacity>
                                 )}

@@ -30,6 +30,7 @@ export default function RiderLayout() {
                     const icons = {
                         "search/index": focused ? "search" : "search-outline",
                         "bookings/index": focused ? "calendar" : "calendar-outline",
+                        "chat": focused ? "chatbubbles" : "chatbubbles-outline",
                         "profile/index": focused ? "person" : "person-outline",
                     };
                     return (
@@ -45,6 +46,7 @@ export default function RiderLayout() {
         >
             <Tabs.Screen name="search/index" options={{ title: "Find a Ride" }} />
             <Tabs.Screen name="bookings/index" options={{ title: "My Bookings" }} />
+            <Tabs.Screen name="chat" options={{ title: "Chat" }} />
             <Tabs.Screen name="profile/index" options={{ title: "Profile" }} />
             <Tabs.Screen name="search/details" options={{ href: null }} />
             <Tabs.Screen name="search/driver-details" options={{ href: null }} />
