@@ -421,8 +421,9 @@ export default function SearchRides() {
         setLoading(true);
         setSearched(true);
         try {
+            const dateStr = date.toISOString();
             const [searchRes, bookingsRes] = await Promise.all([
-                fetch(`${BACKEND_URL}/api/rides/search?pickupLat=${pickup.lat}&pickupLng=${pickup.lng}&dropLat=${drop.lat}&dropLng=${drop.lng}`),
+                fetch(`${BACKEND_URL}/api/rides/search?pickupLat=${pickup.lat}&pickupLng=${pickup.lng}&dropLat=${drop.lat}&dropLng=${drop.lng}&date=${encodeURIComponent(dateStr)}&minSeats=${seats}`),
                 fetch(`${BACKEND_URL}/api/rider/rider-rides/${user?.id}`),
             ]);
             const searchData = await searchRes.json();
@@ -536,6 +537,7 @@ export default function SearchRides() {
                                 isBooked: isBooked ? "1" : "0",
                                 isRequested: isRequested ? "1" : "0",
                                 isDriver: isDriver ? "1" : "0",
+                                seatsRequested: String(seats),
                             },
                         });
                     }}
@@ -1119,6 +1121,7 @@ export default function SearchRides() {
                                         isBooked: isBkd ? "1" : "0",
                                         isRequested: isReq ? "1" : "0",
                                         isDriver: isDrv ? "1" : "0",
+                                        seatsRequested: String(seats),
                                     },
                                 });
                             }}
