@@ -70,6 +70,8 @@ export default function RideDetails() {
     const [loading, setLoading] = useState(true);
     const [cancelling, setCancelling] = useState(false);
     const [updatingPrefs, setUpdatingPrefs] = useState(false);
+    const [confirmingPassenger, setConfirmingPassenger] = useState(null);
+    const [rejectingPassenger, setRejectingPassenger] = useState(null);
     const [distanceToPickup, setDistanceToPickup] = useState(null);
     const [scrollEnabled, setScrollEnabled] = useState(true);
     const [showSeatMap, setShowSeatMap] = useState(false);
@@ -235,6 +237,70 @@ export default function RideDetails() {
         }
     };
 
+    const handleConfirmRequest = async (passengerUserId) => {
+        setConfirmingPassenger(passengerUserId);
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/rides/${rideId}/confirm-request`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    driverUserId: user.id,
+                    passengerUserId,
+                }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                Alert.alert("Confirmed", "Passenger request has been confirmed.");
+                fetchRideDetails();
+            } else {
+                Alert.alert("Error", data.message || "Failed to confirm request");
+            }
+        } catch (error) {
+            console.error("Error confirming request:", error);
+            Alert.alert("Error", "Failed to confirm request. Please try again.");
+        } finally {
+            setConfirmingPassenger(null);
+        }
+    };
+
+    const handleRejectRequest = async (passengerUserId) => {
+        const confirmReject = await new Promise((resolve) => {
+            Alert.alert(
+                "Reject Request",
+                "Are you sure you want to reject this ride request?",
+                [
+                    { text: "No", onPress: () => resolve(false), style: "cancel" },
+                    { text: "Yes, Reject", onPress: () => resolve(true), style: "destructive" },
+                ]
+            );
+        });
+        if (!confirmReject) return;
+
+        setRejectingPassenger(passengerUserId);
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/rides/${rideId}/reject-request`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    driverUserId: user.id,
+                    passengerUserId,
+                }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                Alert.alert("Rejected", "Passenger request has been rejected.");
+                fetchRideDetails();
+            } else {
+                Alert.alert("Error", data.message || "Failed to reject request");
+            }
+        } catch (error) {
+            console.error("Error rejecting request:", error);
+            Alert.alert("Error", "Failed to reject request. Please try again.");
+        } finally {
+            setRejectingPassenger(null);
+        }
+    };
+
     if (loading) {
         return (
             <View style={[tw`flex-1 justify-center items-center`, { backgroundColor: colors.background }]}>
@@ -264,6 +330,7 @@ export default function RideDetails() {
     }
 
     const confirmedPassengers = passengers?.filter(p => p.status === "confirmed") || [];
+    const requestedPassengers = passengers?.filter(p => p.status === "requested") || [];
     const carSeatRows = buildCarLayout(seats?.seatTypes || [], confirmedPassengers, driver);
     const isDriver = role === "driver";
     const canEditPrefs = isDriver && confirmedPassengers.length === 0;
@@ -390,7 +457,32 @@ export default function RideDetails() {
 
                     {/* Driver/Rider Info Section */}
                     {role === "rider" ? (
-                        <View style={[tw`bg-white rounded-2xl mb-6 shadow-sm border overflow-hidden`, { borderColor: colors.border }]}>
+                        <TouchableOpacity
+                            activeOpacity={0.85}
+                            onPress={() => {
+                                router.push({
+                                    pathname: "/(rider)/search/driver-details",
+                                    params: {
+                                        rideId,
+                                        driverName: driver.name || "Driver",
+                                        driverImage: driver.profileImage || "",
+                                        driverRating: String(driver.rating || 0),
+                                        driverReviews: String(driver.reviewsCount || 0),
+                                        driverRidesHosted: String(driver.ridesHosted || 0),
+                                        driverRidesCompleted: String(driver.ridesCompleted || 0),
+                                        driverTrustScore: String(driver.trustScore || 0),
+                                        driverPhone: driver.phoneNumber || "",
+                                        driverHoursDriven: String(driver.hoursDriven || 0),
+                                        driverDistanceKm: String(driver.distanceDrivenKm || 0),
+                                        isVerified: isVerified ? "1" : "0",
+                                        verEmail: verDet.email ? "1" : "0",
+                                        verPhone: verDet.phone ? "1" : "0",
+                                        verLicense: verDet.license ? "1" : "0",
+                                        verVehicle: verDet.vehicle ? "1" : "0",
+                                    },
+                                });
+                            }}
+                            style={[tw`bg-white rounded-2xl mb-6 shadow-sm border overflow-hidden`, { borderColor: colors.border }]}>
 
                             {/* Section label */}
                             <View style={[tw`px-5 pt-4 pb-3 flex-row items-center justify-between`, { borderBottomWidth: 1, borderBottomColor: colors.borderLight }]}>
@@ -438,6 +530,7 @@ export default function RideDetails() {
                                 >
                                     <Ionicons name="call" size={18} color={colors.primary} />
                                 </TouchableOpacity>
+                                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} style={tw`ml-2`} />
                             </View>
 
                             {/* Unverified badges */}
@@ -500,7 +593,7 @@ export default function RideDetails() {
                                     <Text style={[tw`text-xs flex-1`, { color: colors.textMuted }]}>Vehicle details not available for this ride.</Text>
                                 </View>
                             )}
-                        </View>
+                        </TouchableOpacity>
                     ) : (
                         <View>
                             {/* Your Vehicle — driver view */}
@@ -591,6 +684,56 @@ export default function RideDetails() {
                                     <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>{confirmedPassengers.length}/{seats.total} Booked</Text>
                                 </View>
                             </View>
+
+                            {/* Pending Requests Section */}
+                            {requestedPassengers.length > 0 && (
+                                <View style={tw`mb-4`}>
+                                    <View style={[tw`flex-row items-center gap-2 mb-3 px-2 py-2 rounded-xl`, { backgroundColor: "rgba(245,158,11,0.08)" }]}>
+                                        <MaterialCommunityIcons name="clock-outline" size={16} color="#f59e0b" />
+                                        <Text style={[tw`text-xs font-bold`, { color: "#f59e0b" }]}>
+                                            {requestedPassengers.length} PENDING REQUEST{requestedPassengers.length !== 1 ? "S" : ""}
+                                        </Text>
+                                    </View>
+                                    {requestedPassengers.map((passenger, index) => (
+                                        <View key={`req-${index}`} style={[tw`flex-row items-center py-3`, index !== requestedPassengers.length - 1 && tw`border-b`, { borderColor: colors.borderLight }]}>
+                                            <Image source={{ uri: passenger.profileImage }} style={tw`w-10 h-10 rounded-full mr-3`} />
+                                            <View style={tw`flex-1`}>
+                                                <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{passenger.name}</Text>
+                                                <Text style={[tw`text-xs`, { color: "#f59e0b" }]}>₹{passenger.farePaid} · Pending</Text>
+                                            </View>
+                                            <View style={tw`flex-row gap-2`}>
+                                                <TouchableOpacity
+                                                    onPress={() => handleConfirmRequest(passenger.userId)}
+                                                    disabled={confirmingPassenger === passenger.userId}
+                                                    style={[tw`px-3 py-2 rounded-xl`, { backgroundColor: colors.success }]}
+                                                >
+                                                    {confirmingPassenger === passenger.userId ? (
+                                                        <ActivityIndicator size="small" color="white" />
+                                                    ) : (
+                                                        <Ionicons name="checkmark" size={16} color="white" />
+                                                    )}
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    onPress={() => handleRejectRequest(passenger.userId)}
+                                                    disabled={rejectingPassenger === passenger.userId}
+                                                    style={[tw`px-3 py-2 rounded-xl`, { backgroundColor: "#ef4444" }]}
+                                                >
+                                                    {rejectingPassenger === passenger.userId ? (
+                                                        <ActivityIndicator size="small" color="white" />
+                                                    ) : (
+                                                        <Ionicons name="close" size={16} color="white" />
+                                                    )}
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    ))}
+                                    {confirmedPassengers.length > 0 && (
+                                        <View style={[tw`mt-3 mb-1`, { height: 1, backgroundColor: colors.border }]} />
+                                    )}
+                                </View>
+                            )}
+
+                            {/* Confirmed Passengers */}
                             {confirmedPassengers.length > 0 ? (
                                 confirmedPassengers.map((passenger, index) => (
                                     <View key={index} style={[tw`flex-row items-center py-3`, index !== confirmedPassengers.length - 1 && tw`border-b`, { borderColor: colors.borderLight }]}>
@@ -604,9 +747,9 @@ export default function RideDetails() {
                                         </TouchableOpacity>
                                     </View>
                                 ))
-                            ) : (
-                                <Text style={[tw`text-sm italic text-center py-4`, { color: colors.textSecondary }]}>No confirmed passengers yet.</Text>
-                            )}
+                            ) : requestedPassengers.length === 0 ? (
+                                <Text style={[tw`text-sm italic text-center py-4`, { color: colors.textSecondary }]}>No passengers or requests yet.</Text>
+                            ) : null}
                         </View>
                         </View>
                     )}

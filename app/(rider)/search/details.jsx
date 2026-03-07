@@ -22,6 +22,7 @@ export default function RideSearchDetails() {
         dropName, dropLat, dropLng,
         estimatedFare,
         isBooked: isBookedParam,
+        isRequested: isRequestedParam,
         isDriver: isDriverParam,
     } = params;
 
@@ -34,6 +35,7 @@ export default function RideSearchDetails() {
     const [loading, setLoading] = useState(true);
     const [booking, setBooking] = useState(false);
     const [booked, setBooked] = useState(isBookedParam === "1");
+    const [requested, setRequested] = useState(isRequestedParam === "1");
     const [scrollEnabled, setScrollEnabled] = useState(true);
 
     const isDriver = isDriverParam === "1";
@@ -43,7 +45,17 @@ export default function RideSearchDetails() {
         try {
             const res = await fetch(`${BACKEND_URL}/api/rides/${rideId}`);
             const data = await res.json();
-            if (res.ok) setRide(data.ride);
+            if (res.ok) {
+                setRide(data.ride);
+                // Check current user's passenger status
+                const myPassenger = (data.ride.passengers || []).find(
+                    (p) => p.userId === user?.id && p.status !== "cancelled"
+                );
+                if (myPassenger) {
+                    if (myPassenger.status === "confirmed") setBooked(true);
+                    else if (myPassenger.status === "requested") setRequested(true);
+                }
+            }
             else Alert.alert("Error", data.message || "Failed to load ride");
         } catch (e) {
             console.error("Fetch ride error:", e);
@@ -51,7 +63,7 @@ export default function RideSearchDetails() {
         } finally {
             setLoading(false);
         }
-    }, [rideId]);
+    }, [rideId, user?.id]);
 
     useEffect(() => { fetchRide(); }, [fetchRide]);
 
@@ -79,9 +91,9 @@ export default function RideSearchDetails() {
         return { latitude: 17.385, longitude: 78.4867, latitudeDelta: 0.2, longitudeDelta: 0.2 };
     }, [routePoints]);
 
-    /* ── Book ride ─────────────────────────────── */
-    const handleBook = async () => {
-        if (booking || booked || isDriver) return;
+    /* ── Request ride ─────────────────────────────── */
+    const handleRequest = async () => {
+        if (booking || booked || requested || isDriver) return;
         setBooking(true);
         try {
             const res = await fetch(`${BACKEND_URL}/api/rides/${rideId}/book`, {
@@ -102,17 +114,17 @@ export default function RideSearchDetails() {
             });
             const data = await res.json();
             if (res.ok) {
-                setBooked(true);
+                setRequested(true);
                 Alert.alert(
-                    "Ride Booked! 🎉",
-                    `Your seat is confirmed. Estimated fare: ₹${data.farePaid || estimatedFare}`,
-                    [{ text: "OK", onPress: () => router.back() }]
+                    "Ride Requested! 🙌",
+                    `Your request has been sent to the driver. Estimated fare: ₹${data.farePaid || estimatedFare}. You'll be confirmed once the driver approves.`,
+                    [{ text: "OK" }]
                 );
             } else {
-                Alert.alert("Booking failed", data.message || "Please try again.");
+                Alert.alert("Request failed", data.message || "Please try again.");
             }
         } catch (e) {
-            console.error("Book error:", e);
+            console.error("Request error:", e);
             Alert.alert("Error", "Something went wrong. Please try again.");
         } finally {
             setBooking(false);
@@ -279,29 +291,35 @@ export default function RideSearchDetails() {
                 <View style={tw`px-5`}>
 
                     {/* ── Status badge ─────────────── */}
-                    {(booked || isDriver) && (
+                    {(booked || requested || isDriver) && (
                         <View
                             style={[
                                 tw`flex-row items-center gap-2 mt-4 px-4 py-2.5 rounded-xl`,
                                 {
-                                    backgroundColor: isDriver ? colors.primarySoft : "rgba(7,136,41,0.12)",
+                                    backgroundColor: isDriver
+                                        ? colors.primarySoft
+                                        : booked
+                                            ? "rgba(7,136,41,0.12)"
+                                            : "rgba(245,158,11,0.12)",
                                 },
                             ]}
                         >
                             <MaterialCommunityIcons
-                                name={isDriver ? "car" : "check-circle"}
+                                name={isDriver ? "car" : booked ? "check-circle" : "clock-outline"}
                                 size={16}
-                                color={isDriver ? colors.primary : colors.success}
+                                color={isDriver ? colors.primary : booked ? colors.success : "#f59e0b"}
                             />
                             <Text
                                 style={[
                                     tw`text-sm font-bold`,
-                                    { color: isDriver ? colors.primary : colors.success },
+                                    { color: isDriver ? colors.primary : booked ? colors.success : "#f59e0b" },
                                 ]}
                             >
                                 {isDriver
                                     ? "You are the driver of this ride"
-                                    : "You have already booked this ride"}
+                                    : booked
+                                        ? "Your ride is confirmed ✓"
+                                        : "Ride requested — waiting for driver approval"}
                             </Text>
                         </View>
                     )}
@@ -429,7 +447,31 @@ export default function RideSearchDetails() {
                     </View>
 
                     {/* ── Driver card ──────────────── */}
-                    <View
+                    <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={() => {
+                            router.push({
+                                pathname: "/(rider)/search/driver-details",
+                                params: {
+                                    rideId,
+                                    driverName: driver.name || "Driver",
+                                    driverImage: driver.profileImage || "",
+                                    driverRating: String(driver.rating || 0),
+                                    driverReviews: String(driver.reviewsCount || 0),
+                                    driverRidesHosted: String(driver.ridesHosted || 0),
+                                    driverRidesCompleted: String(driver.ridesCompleted || 0),
+                                    driverTrustScore: String(driver.trustScore || 0),
+                                    driverPhone: driver.phoneNumber || "",
+                                    driverHoursDriven: String(driver.hoursDriven || 0),
+                                    driverDistanceKm: String(driver.distanceDrivenKm || 0),
+                                    isVerified: isVerified ? "1" : "0",
+                                    verEmail: driver.verificationDetails?.email ? "1" : "0",
+                                    verPhone: driver.verificationDetails?.phone ? "1" : "0",
+                                    verLicense: driver.verificationDetails?.license ? "1" : "0",
+                                    verVehicle: driver.verificationDetails?.vehicle ? "1" : "0",
+                                },
+                            });
+                        }}
                         style={[
                             tw`mt-4 rounded-2xl overflow-hidden`,
                             { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
@@ -490,8 +532,9 @@ export default function RideSearchDetails() {
                                     </View>
                                 )}
                             </View>
+                            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                         </View>
-                    </View>
+                    </TouchableOpacity>
 
                     {/* ── Vehicle card ─────────────── */}
                     {(vehicle.brand || vehicle.model) && (
@@ -698,12 +741,24 @@ export default function RideSearchDetails() {
                     >
                         <MaterialCommunityIcons name="check-circle" size={18} color={colors.success} />
                         <Text style={[tw`text-sm font-bold`, { color: colors.success }]}>
-                            Ride Booked
+                            Ride Confirmed
+                        </Text>
+                    </View>
+                ) : requested ? (
+                    <View
+                        style={[
+                            tw`flex-row items-center justify-center gap-2 py-3.5 rounded-xl`,
+                            { backgroundColor: "rgba(245,158,11,0.12)" },
+                        ]}
+                    >
+                        <MaterialCommunityIcons name="clock-outline" size={18} color="#f59e0b" />
+                        <Text style={[tw`text-sm font-bold`, { color: "#f59e0b" }]}>
+                            Requested — Waiting for Driver
                         </Text>
                     </View>
                 ) : (
                     <TouchableOpacity
-                        onPress={handleBook}
+                        onPress={handleRequest}
                         disabled={booking}
                         activeOpacity={0.85}
                         style={[tw`py-3.5 rounded-xl items-center`, { backgroundColor: colors.primary }]}
@@ -712,7 +767,7 @@ export default function RideSearchDetails() {
                             <ActivityIndicator size="small" color={colors.primaryText} />
                         ) : (
                             <Text style={[tw`text-sm font-extrabold`, { color: colors.primaryText }]}>
-                                Book Ride · ₹{estimatedFare}
+                                Request Ride · ₹{estimatedFare}
                             </Text>
                         )}
                     </TouchableOpacity>

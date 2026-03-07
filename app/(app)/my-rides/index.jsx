@@ -289,6 +289,28 @@ export default function MyRides() {
                                 <Text style={[tw`text-[10px] font-bold uppercase`, { color: colors.textMuted }]}>{ride.status}</Text>
                             </View>
                         )}
+                        {!isPast && !isDriverMode && item.status === "requested" && (
+                            <View style={[tw`mr-2 flex-row items-center gap-1 px-2 py-0.5 rounded-full`, { backgroundColor: "rgba(245,158,11,0.12)" }]}>
+                                <MaterialCommunityIcons name="clock-outline" size={10} color="#f59e0b" />
+                                <Text style={[tw`text-[10px] font-bold`, { color: "#f59e0b" }]}>Pending</Text>
+                            </View>
+                        )}
+                        {!isPast && !isDriverMode && item.status === "confirmed" && (
+                            <View style={[tw`mr-2 flex-row items-center gap-1 px-2 py-0.5 rounded-full`, { backgroundColor: "rgba(7,136,41,0.12)" }]}>
+                                <Ionicons name="checkmark-circle" size={10} color={colors.success || "#078829"} />
+                                <Text style={[tw`text-[10px] font-bold`, { color: colors.success || "#078829" }]}>Confirmed</Text>
+                            </View>
+                        )}
+                        {!isPast && isDriverMode && (() => {
+                            const pendingCount = (ride.passengers || []).filter(p => p.status === "requested").length;
+                            if (pendingCount === 0) return null;
+                            return (
+                                <View style={[tw`mr-2 flex-row items-center gap-1 px-2 py-0.5 rounded-full`, { backgroundColor: "rgba(245,158,11,0.12)" }]}>
+                                    <MaterialCommunityIcons name="account-clock" size={10} color="#f59e0b" />
+                                    <Text style={[tw`text-[10px] font-bold`, { color: "#f59e0b" }]}>{pendingCount} Request{pendingCount !== 1 ? "s" : ""}</Text>
+                                </View>
+                            );
+                        })()}
                         <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
                     </View>
                 </View>

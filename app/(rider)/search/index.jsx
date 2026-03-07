@@ -40,89 +40,128 @@ function haversineKm(a, b) {
 }
 
 /* ─── PlaceInput ──────────────────────────────────── */
-function PlaceInput({ placeholder, value, onSelect, colors, icon, iconColor }) {
-    const [modalVisible, setModalVisible] = useState(false);
+/**
+ * When `inline` is true the autocomplete opens as an absolute-positioned
+ * overlay instead of a nested <Modal>.  This avoids the "nested-modal"
+ * problem on Android where the inner modal's text-input & suggestions
+ * list stop responding to touches.
+ */
+function PlaceInput({ placeholder, value, onSelect, colors, icon, iconColor, inline = false }) {
+    const [open, setOpen] = useState(false);
     const ref = useRef(null);
 
-    return (
-        <>
-            <TouchableOpacity
-                onPress={() => {
-                    setModalVisible(true);
-                    setTimeout(() => ref.current?.focus(), 300);
-                }}
-                activeOpacity={0.75}
+    const trigger = (
+        <TouchableOpacity
+            onPress={() => {
+                setOpen(true);
+                setTimeout(() => ref.current?.focus(), 300);
+            }}
+            activeOpacity={0.75}
+            style={[
+                tw`flex-row items-center px-4 py-3 rounded-xl`,
+                { backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.border },
+            ]}
+        >
+            <Ionicons name={icon} size={16} color={iconColor} style={tw`mr-3`} />
+            <Text
+                numberOfLines={1}
+                style={[tw`flex-1 text-sm`, { color: value ? colors.textPrimary : colors.textMuted }]}
+            >
+                {value?.name || placeholder}
+            </Text>
+            {value && (
+                <TouchableOpacity
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    onPress={() => onSelect(null)}
+                >
+                    <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+            )}
+        </TouchableOpacity>
+    );
+
+    const autocompleteContent = (
+        <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
+            <View
                 style={[
-                    tw`flex-row items-center px-4 py-3 rounded-xl`,
-                    { backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.border },
+                    tw`flex-row items-center px-4 pt-12 pb-4 gap-3`,
+                    { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
                 ]}
             >
-                <Ionicons name={icon} size={16} color={iconColor} style={tw`mr-3`} />
-                <Text
-                    numberOfLines={1}
-                    style={[tw`flex-1 text-sm`, { color: value ? colors.textPrimary : colors.textMuted }]}
-                >
-                    {value?.name || placeholder}
+                <TouchableOpacity onPress={() => setOpen(false)}>
+                    <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+                </TouchableOpacity>
+                <Text style={[tw`text-base font-bold flex-1`, { color: colors.textPrimary }]}>
+                    {placeholder}
                 </Text>
-                {value && (
-                    <TouchableOpacity
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        onPress={() => onSelect(null)}
-                    >
-                        <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-                    </TouchableOpacity>
-                )}
-            </TouchableOpacity>
-
-            <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
-                <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
-                    <View
-                        style={[
-                            tw`flex-row items-center px-4 pt-12 pb-4 gap-3`,
-                            { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
-                        ]}
-                    >
-                        <TouchableOpacity onPress={() => setModalVisible(false)}>
-                            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-                        </TouchableOpacity>
-                        <Text style={[tw`text-base font-bold flex-1`, { color: colors.textPrimary }]}>
-                            {placeholder}
-                        </Text>
+            </View>
+            <GooglePlacesAutocomplete
+                ref={ref}
+                placeholder={`Search for ${placeholder.toLowerCase()}…`}
+                fetchDetails
+                autoFocus
+                enablePoweredByContainer={false}
+                query={{ key: GOOGLE_API_KEY, language: "en", components: "country:in" }}
+                onPress={(data, details) => {
+                    const loc = details?.geometry?.location;
+                    if (!loc) return;
+                    onSelect({ name: data.description, lat: loc.lat, lng: loc.lng });
+                    setOpen(false);
+                }}
+                keyboardShouldPersistTaps="always"
+                styles={{
+                    container: { flex: 1 },
+                    textInputContainer: { paddingHorizontal: 16, paddingTop: 12, backgroundColor: colors.background },
+                    textInput: {
+                        backgroundColor: colors.surfaceMuted, borderRadius: 12, fontSize: 14,
+                        color: colors.textPrimary, paddingHorizontal: 14, height: 46,
+                        borderWidth: 1, borderColor: colors.border,
+                    },
+                    listView: { backgroundColor: colors.background },
+                    row: { backgroundColor: colors.surface, paddingVertical: 14, paddingHorizontal: 16 },
+                    separator: { height: 1, backgroundColor: colors.border },
+                    description: { fontSize: 13, color: colors.textPrimary },
+                }}
+                renderLeftButton={() => (
+                    <View style={tw`pl-4 justify-center`}>
+                        <Ionicons name={icon} size={16} color={iconColor} />
                     </View>
-                    <GooglePlacesAutocomplete
-                        ref={ref}
-                        placeholder={`Search for ${placeholder.toLowerCase()}…`}
-                        fetchDetails
-                        autoFocus
-                        enablePoweredByContainer={false}
-                        query={{ key: GOOGLE_API_KEY, language: "en", components: "country:in" }}
-                        onPress={(data, details) => {
-                            const loc = details?.geometry?.location;
-                            if (!loc) return;
-                            onSelect({ name: data.description, lat: loc.lat, lng: loc.lng });
-                            setModalVisible(false);
+                )}
+            />
+        </View>
+    );
+
+    /* ── inline mode: absolute overlay instead of nested Modal ── */
+    if (inline) {
+        return (
+            <>
+                {trigger}
+                {open && (
+                    <View
+                        style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: Dimensions.get("window").width,
+                            height: Dimensions.get("window").height,
+                            zIndex: 999,
+                            elevation: 999,
+                            backgroundColor: colors.background,
                         }}
-                        keyboardShouldPersistTaps="always"
-                        styles={{
-                            container: { flex: 1 },
-                            textInputContainer: { paddingHorizontal: 16, paddingTop: 12, backgroundColor: colors.background },
-                            textInput: {
-                                backgroundColor: colors.surfaceMuted, borderRadius: 12, fontSize: 14,
-                                color: colors.textPrimary, paddingHorizontal: 14, height: 46,
-                                borderWidth: 1, borderColor: colors.border,
-                            },
-                            listView: { backgroundColor: colors.background },
-                            row: { backgroundColor: colors.surface, paddingVertical: 14, paddingHorizontal: 16 },
-                            separator: { height: 1, backgroundColor: colors.border },
-                            description: { fontSize: 13, color: colors.textPrimary },
-                        }}
-                        renderLeftButton={() => (
-                            <View style={tw`pl-4 justify-center`}>
-                                <Ionicons name={icon} size={16} color={iconColor} />
-                            </View>
-                        )}
-                    />
-                </View>
+                    >
+                        {autocompleteContent}
+                    </View>
+                )}
+            </>
+        );
+    }
+
+    /* ── default mode: separate Modal ── */
+    return (
+        <>
+            {trigger}
+            <Modal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
+                {autocompleteContent}
             </Modal>
         </>
     );
@@ -205,6 +244,7 @@ export default function SearchRides() {
     /* ── results state ───────────────────────────── */
     const [rides, setRides] = useState([]);
     const [bookedRideIds, setBookedRideIds] = useState(new Set());
+    const [requestedRideIds, setRequestedRideIds] = useState(new Set());
     const [loading, setLoading] = useState(false);
     const [searched, setSearched] = useState(false);
 
@@ -313,10 +353,18 @@ export default function SearchRides() {
                     const bookingsData = await bookingsRes.json();
                     const booked = new Set(
                         (Array.isArray(bookingsData) ? bookingsData : [])
-                            .filter((b) => b.status !== "cancelled")
+                            .filter((b) => b.status === "confirmed")
                             .map((b) => b.ride?._id?.toString()).filter(Boolean),
                     );
-                    if (!cancelled) setBookedRideIds((prev) => new Set([...prev, ...booked]));
+                    const requested = new Set(
+                        (Array.isArray(bookingsData) ? bookingsData : [])
+                            .filter((b) => b.status === "requested")
+                            .map((b) => b.ride?._id?.toString()).filter(Boolean),
+                    );
+                    if (!cancelled) {
+                        setBookedRideIds((prev) => new Set([...prev, ...booked]));
+                        setRequestedRideIds((prev) => new Set([...prev, ...requested]));
+                    }
                 }
                 if (!cancelled && nearbyRes.ok && Array.isArray(nearbyData)) {
                     const now = new Date();
@@ -381,10 +429,16 @@ export default function SearchRides() {
             const bookingsData = await bookingsRes.json();
             const booked = new Set(
                 (Array.isArray(bookingsData) ? bookingsData : [])
-                    .filter((b) => b.status !== "cancelled")
+                    .filter((b) => b.status === "confirmed")
+                    .map((b) => b.ride?._id?.toString()).filter(Boolean),
+            );
+            const requested = new Set(
+                (Array.isArray(bookingsData) ? bookingsData : [])
+                    .filter((b) => b.status === "requested")
                     .map((b) => b.ride?._id?.toString()).filter(Boolean),
             );
             setBookedRideIds(booked);
+            setRequestedRideIds(requested);
             const now = new Date();
             setRides(
                 (Array.isArray(searchData) ? searchData : [])
@@ -397,10 +451,10 @@ export default function SearchRides() {
 
     /* ── sort: booked first ─────────────────────── */
     const { pinnedRides, otherRides } = useMemo(() => {
-        const pinned = rides.filter((r) => bookedRideIds.has(r._id?.toString()));
-        const other  = rides.filter((r) => !bookedRideIds.has(r._id?.toString()));
+        const pinned = rides.filter((r) => bookedRideIds.has(r._id?.toString()) || requestedRideIds.has(r._id?.toString()));
+        const other  = rides.filter((r) => !bookedRideIds.has(r._id?.toString()) && !requestedRideIds.has(r._id?.toString()));
         return { pinnedRides: pinned, otherRides: other };
-    }, [rides, bookedRideIds]);
+    }, [rides, bookedRideIds, requestedRideIds]);
 
     /* ── booking modal map region ────────────────── */
     const bookingMapRegion = useMemo(() => {
@@ -440,6 +494,7 @@ export default function SearchRides() {
         (item) => {
             const rideId   = item._id?.toString();
             const isBooked = bookedRideIds.has(rideId);
+            const isRequested = requestedRideIds.has(rideId);
             const isDriver = item.driver?.userId === user?.id;
             const dep      = new Date(item.schedule?.departureTime);
             const isUpcoming = dep > new Date();
@@ -449,9 +504,15 @@ export default function SearchRides() {
                 badge = { label: "YOU'RE THE DRIVER", bg: colors.primarySoft, color: colors.primary, icon: "car" };
             } else if (isBooked) {
                 badge = {
-                    label: isUpcoming ? "UPCOMING RIDE" : "BOOKED",
+                    label: isUpcoming ? "CONFIRMED" : "BOOKED",
                     bg: "rgba(7,136,41,0.12)", color: colors.success,
-                    icon: isUpcoming ? "calendar-clock" : "check-circle",
+                    icon: isUpcoming ? "check-circle" : "check-circle",
+                };
+            } else if (isRequested) {
+                badge = {
+                    label: "REQUESTED — PENDING",
+                    bg: "rgba(245,158,11,0.12)", color: "#f59e0b",
+                    icon: "clock-outline",
                 };
             }
 
@@ -472,7 +533,9 @@ export default function SearchRides() {
                                 pickupName: pickup?.name, pickupLat: String(pickup?.lat), pickupLng: String(pickup?.lng),
                                 dropName: drop?.name, dropLat: String(drop?.lat), dropLng: String(drop?.lng),
                                 estimatedFare: String(item.estimate?.fare ?? ""),
-                                isBooked: isBooked ? "1" : "0", isDriver: isDriver ? "1" : "0",
+                                isBooked: isBooked ? "1" : "0",
+                                isRequested: isRequested ? "1" : "0",
+                                isDriver: isDriver ? "1" : "0",
                             },
                         });
                     }}
@@ -481,7 +544,7 @@ export default function SearchRides() {
                         tw`rounded-2xl mb-3 overflow-hidden`,
                         {
                             backgroundColor: colors.surface, borderWidth: 1,
-                            borderColor: isDriver ? colors.primary : isBooked ? "rgba(19,236,91,0.4)" : colors.border,
+                            borderColor: isDriver ? colors.primary : isBooked ? "rgba(19,236,91,0.4)" : isRequested ? "rgba(245,158,11,0.4)" : colors.border,
                         },
                     ]}
                 >
@@ -548,7 +611,7 @@ export default function SearchRides() {
                 </TouchableOpacity>
             );
         },
-        [bookedRideIds, user?.id, colors, pickup, drop, router, searched],
+        [bookedRideIds, requestedRideIds, user?.id, colors, pickup, drop, router, searched],
     );
 
     /* ── date picker handler ─────────────────────── */
@@ -762,7 +825,7 @@ export default function SearchRides() {
                             <>
                                 <View style={[tw`flex-row items-center mb-3`, { gap: 6 }]}>
                                     <MaterialCommunityIcons name="bookmark-check" size={14} color={colors.success} />
-                                    <Text style={[tw`text-xs font-extrabold tracking-widest`, { color: colors.success }]}>YOUR BOOKED RIDES</Text>
+                                    <Text style={[tw`text-xs font-extrabold tracking-widest`, { color: colors.success }]}>YOUR RIDES</Text>
                                 </View>
                                 {pinnedRides.map((r) => renderRide(r))}
                                 {otherRides.length > 0 && (
@@ -996,6 +1059,7 @@ export default function SearchRides() {
                                 colors={colors}
                                 icon="radio-button-on"
                                 iconColor={colors.primary}
+                                inline
                             />
                             <View style={[tw`absolute`, { left: 28, top: 42, width: 2, height: 12, backgroundColor: colors.border }]} />
                             <PlaceInput
@@ -1005,6 +1069,7 @@ export default function SearchRides() {
                                 colors={colors}
                                 icon="location"
                                 iconColor="#ef4444"
+                                inline
                             />
                         </View>
 
@@ -1038,6 +1103,7 @@ export default function SearchRides() {
                                 const rid = selectedNearbyRide._id?.toString();
                                 const isDrv = selectedNearbyRide.driver?.userId === user?.id;
                                 const isBkd = bookedRideIds.has(rid);
+                                const isReq = requestedRideIds.has(rid);
                                 closeBookingModal();
                                 router.push({
                                     pathname: "/(rider)/search/details",
@@ -1051,6 +1117,7 @@ export default function SearchRides() {
                                         dropLng: String(bookingDrop.lng),
                                         estimatedFare: String(selectedNearbyRide.estimate?.fare ?? ""),
                                         isBooked: isBkd ? "1" : "0",
+                                        isRequested: isReq ? "1" : "0",
                                         isDriver: isDrv ? "1" : "0",
                                     },
                                 });
