@@ -37,6 +37,8 @@ export default function RideSearchDetails() {
     const [booked, setBooked] = useState(isBookedParam === "1");
     const [requested, setRequested] = useState(isRequestedParam === "1");
     const [scrollEnabled, setScrollEnabled] = useState(true);
+    const [selectedSeat, setSelectedSeat] = useState("any");
+    const [showSeatOptions, setShowSeatOptions] = useState(false);
 
     const isDriver = isDriverParam === "1";
 
@@ -110,6 +112,7 @@ export default function RideSearchDetails() {
                     },
                     pickup: { lat: parseFloat(pickupLat), lng: parseFloat(pickupLng) },
                     drop:   { lat: parseFloat(dropLat),   lng: parseFloat(dropLng) },
+                    seatPreference: selectedSeat,
                 }),
             });
             const data = await res.json();
@@ -707,6 +710,84 @@ export default function RideSearchDetails() {
                                         <Text style={[tw`text-xs`, { color: colors.textSecondary }]}>{prefs.ac ? "AC" : "No AC"}</Text>
                                     </View>
                                 )}
+                            </View>
+                        </View>
+                    )}
+
+                    {/* ── Seat Preference Picker ── */}
+                    {!booked && !requested && !isDriver && ride.seats?.seatTypes?.length > 0 && (
+                        <View
+                            style={[
+                                tw`mt-4 rounded-2xl overflow-hidden`,
+                                { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+                            ]}
+                        >
+                            <View
+                                style={[
+                                    tw`px-5 pt-4 pb-3 flex-row items-center justify-between`,
+                                    { borderBottomWidth: 1, borderBottomColor: colors.border },
+                                ]}
+                            >
+                                <Text
+                                    style={[tw`text-xs font-extrabold tracking-widest`, { color: colors.textSecondary }]}
+                                >
+                                    CHOOSE YOUR SEAT
+                                </Text>
+                                <View style={[tw`px-2.5 py-0.5 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                    <Text style={[tw`text-[10px] font-bold`, { color: colors.primary }]}>
+                                        {ride.seats?.available} available
+                                    </Text>
+                                </View>
+                            </View>
+                            <View style={tw`px-4 py-3 gap-2`}>
+                                {(ride.seats?.seatTypes || []).filter(st => st.count > 0).map((st) => {
+                                    const isSelected = selectedSeat === st.type;
+                                    const seatIcons = {
+                                        front: "car-seat",
+                                        backWindow: "car-door",
+                                        backMiddle: "seat-passenger",
+                                        backArmrest: "seat-recline-normal",
+                                        thirdRow: "seat-recline-extra",
+                                        any: "help-circle-outline",
+                                    };
+                                    return (
+                                        <TouchableOpacity
+                                            key={st.type}
+                                            onPress={() => setSelectedSeat(st.type)}
+                                            activeOpacity={0.8}
+                                            style={[
+                                                tw`flex-row items-center px-4 py-3 rounded-xl border`,
+                                                {
+                                                    borderColor: isSelected ? colors.primary : colors.border,
+                                                    backgroundColor: isSelected ? colors.primarySoft : 'transparent',
+                                                },
+                                            ]}
+                                        >
+                                            <MaterialCommunityIcons
+                                                name={seatIcons[st.type] || "seat"}
+                                                size={20}
+                                                color={isSelected ? colors.primary : colors.textMuted}
+                                                style={tw`mr-3`}
+                                            />
+                                            <View style={tw`flex-1`}>
+                                                <Text
+                                                    style={[
+                                                        tw`text-sm`,
+                                                        { color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '500' },
+                                                    ]}
+                                                >
+                                                    {st.label || st.type}
+                                                </Text>
+                                                <Text style={[tw`text-[10px] mt-0.5`, { color: colors.textMuted }]}>
+                                                    {st.count} seat{st.count !== 1 ? 's' : ''} of this type
+                                                </Text>
+                                            </View>
+                                            {isSelected && (
+                                                <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                                            )}
+                                        </TouchableOpacity>
+                                    );
+                                })}
                             </View>
                         </View>
                     )}
