@@ -28,9 +28,9 @@ export default function RiderLayout() {
                 tabBarInactiveTintColor: colors.tabInactive,
                 tabBarIcon: ({ focused, color }) => {
                     const icons = {
-                        search: focused ? "search" : "search-outline",
-                        bookings: focused ? "calendar" : "calendar-outline",
-                        profile: focused ? "person" : "person-outline",
+                        "search/index": focused ? "search" : "search-outline",
+                        "bookings/index": focused ? "calendar" : "calendar-outline",
+                        "profile/index": focused ? "person" : "person-outline",
                     };
                     return (
                         <Ionicons
@@ -43,9 +43,10 @@ export default function RiderLayout() {
                 tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
             })}
         >
-            <Tabs.Screen name="search" options={{ title: "Find a Ride" }} />
-            <Tabs.Screen name="bookings" options={{ title: "My Bookings" }} />
-            <Tabs.Screen name="profile" options={{ title: "Profile" }} />
+            <Tabs.Screen name="search/index" options={{ title: "Find a Ride" }} />
+            <Tabs.Screen name="bookings/index" options={{ title: "My Bookings" }} />
+            <Tabs.Screen name="profile/index" options={{ title: "Profile" }} />
+            <Tabs.Screen name="search/details" options={{ href: null }} />
         </Tabs>
     );
 }
