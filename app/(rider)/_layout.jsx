@@ -47,6 +47,7 @@ export default function RiderLayout() {
             <Tabs.Screen name="bookings/index" options={{ title: "My Bookings" }} />
             <Tabs.Screen name="profile/index" options={{ title: "Profile" }} />
             <Tabs.Screen name="search/details" options={{ href: null }} />
+            <Tabs.Screen name="search/driver-details" options={{ href: null }} />
         </Tabs>
     );
 }

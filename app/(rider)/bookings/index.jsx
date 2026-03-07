@@ -88,6 +88,18 @@ export default function Bookings() {
                         <Text style={[tw`text-xs font-bold uppercase`, { color: colors.textMuted }]}>{ride.status}</Text>
                     </View>
                 )}
+                {!isPast && item.status === "requested" && (
+                    <View style={[tw`mt-3 flex-row items-center gap-1 px-2.5 py-1 rounded-full self-start`, { backgroundColor: "rgba(245,158,11,0.12)" }]}>
+                        <MaterialCommunityIcons name="clock-outline" size={12} color="#f59e0b" />
+                        <Text style={[tw`text-xs font-bold`, { color: "#f59e0b" }]}>Pending Approval</Text>
+                    </View>
+                )}
+                {!isPast && item.status === "confirmed" && (
+                    <View style={[tw`mt-3 flex-row items-center gap-1 px-2.5 py-1 rounded-full self-start`, { backgroundColor: "rgba(7,136,41,0.12)" }]}>
+                        <Ionicons name="checkmark-circle" size={12} color={colors.success} />
+                        <Text style={[tw`text-xs font-bold`, { color: colors.success }]}>Confirmed</Text>
+                    </View>
+                )}
             </TouchableOpacity>
         );
     };
