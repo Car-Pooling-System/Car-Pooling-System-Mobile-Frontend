@@ -505,11 +505,58 @@ export default function RiderChatRoomScreen() {
                                 {profileUser?.role || "rider"}
                             </Text>
                         </View>
+                        {profileUser?.userId !== user?.id && (
+                            <TouchableOpacity
+                                onPress={async () => {
+                                    try {
+                                        const res = await fetch(`${BACKEND_URL}/api/chat/conversations/direct`, {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                                user1: {
+                                                    userId: user?.id,
+                                                    name: user?.fullName || user?.firstName || "",
+                                                    profileImage: user?.imageUrl || "",
+                                                    role: "rider",
+                                                },
+                                                user2: {
+                                                    userId: profileUser.userId,
+                                                    name: profileUser.name || "",
+                                                    profileImage: profileUser.profileImage || "",
+                                                    role: profileUser.role || "rider",
+                                                },
+                                            }),
+                                        });
+                                        const convo = await res.json();
+                                        if (res.ok && convo._id) {
+                                            setProfileUser(null);
+                                            setShowMembers(false);
+                                            router.push({
+                                                pathname: "/(rider)/chat/room",
+                                                params: {
+                                                    conversationId: convo._id,
+                                                    title: profileUser.name || "Chat",
+                                                    image: profileUser.profileImage || "",
+                                                    type: "direct",
+                                                },
+                                            });
+                                        }
+                                    } catch (err) {
+                                        console.error("Create DM error:", err);
+                                    }
+                                }}
+                                style={[tw`mt-4 px-8 py-2.5 rounded-full flex-row items-center gap-2`, { backgroundColor: colors.primary }]}
+                                activeOpacity={0.7}
+                            >
+                                <Ionicons name="chatbubble" size={14} color="#fff" />
+                                <Text style={tw`text-sm font-bold text-white`}>Message</Text>
+                            </TouchableOpacity>
+                        )}
                         <TouchableOpacity
                             onPress={() => setProfileUser(null)}
-                            style={[tw`mt-6 px-8 py-2.5 rounded-full`, { backgroundColor: colors.primary }]}
+                            style={[tw`mt-3 px-8 py-2.5 rounded-full`, { backgroundColor: colors.surfaceMuted }]}
                         >
-                            <Text style={tw`text-sm font-bold text-white`}>Close</Text>
+                            <Text style={[tw`text-sm font-bold`, { color: colors.textMuted }]}>Close</Text>
                         </TouchableOpacity>
                     </View>
                 </View>

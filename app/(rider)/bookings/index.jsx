@@ -106,7 +106,7 @@ export default function Bookings() {
 
     return (
         <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
-            <View style={[tw`pt-12 pb-4 px-6`, { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+            <View style={[tw`pt-2 pb-4 px-6`, { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                 <Text style={[tw`text-2xl font-extrabold`, { color: colors.textPrimary }]}>My Bookings</Text>
             </View>
 

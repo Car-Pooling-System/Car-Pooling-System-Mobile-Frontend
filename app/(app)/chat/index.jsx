@@ -93,6 +93,29 @@ export default function ChatListScreen() {
         return new Date(date).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
     };
 
+    const formatRideDate = (dateStr) => {
+        if (!dateStr) return "";
+        const d = new Date(dateStr);
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const isToday = d.toDateString() === today.toDateString();
+        const isTomorrow = d.toDateString() === tomorrow.toDateString();
+        const time = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+        if (isToday) return `Today, ${time}`;
+        if (isTomorrow) return `Tomorrow, ${time}`;
+        return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + `, ${time}`;
+    };
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case "ongoing": return { bg: "#DCFCE7", text: "#16A34A" };
+            case "completed": return { bg: "#DBEAFE", text: "#2563EB" };
+            case "cancelled": return { bg: "#FEE2E2", text: "#DC2626" };
+            default: return { bg: colors.primarySoft, text: colors.primary };
+        }
+    };
+
     const renderConvo = ({ item: convo }) => {
         const title = getConvoTitle(convo);
         const image = getConvoImage(convo);
@@ -100,6 +123,8 @@ export default function ChatListScreen() {
         const unread = convo.unreadCount || 0;
         const lastMsg = convo.lastMessage;
         const isMine = lastMsg?.senderId === user?.id;
+        const ride = convo.rideInfo;
+        const statusColor = ride ? getStatusColor(ride.status) : null;
 
         return (
             <TouchableOpacity
@@ -145,6 +170,27 @@ export default function ChatListScreen() {
                             </Text>
                         )}
                     </View>
+
+                    {/* Ride info for group chats */}
+                    {isGroup && ride && (
+                        <View style={tw`flex-row items-center gap-1.5 mt-0.5 flex-wrap`}>
+                            <Ionicons name="calendar-outline" size={10} color={colors.textMuted} />
+                            <Text style={[tw`text-[10px]`, { color: colors.textSecondary }]} numberOfLines={1}>
+                                {formatRideDate(ride.departureTime)}
+                            </Text>
+                            <Text style={[tw`text-[10px]`, { color: colors.textMuted }]}>·</Text>
+                            <Ionicons name="people-outline" size={10} color={colors.textMuted} />
+                            <Text style={[tw`text-[10px]`, { color: colors.textSecondary }]}>
+                                {convo.participants?.length || 0}
+                            </Text>
+                            {statusColor && (
+                                <View style={[tw`px-1.5 py-0 rounded-full ml-0.5`, { backgroundColor: statusColor.bg }]}>
+                                    <Text style={[tw`text-[8px] font-bold capitalize`, { color: statusColor.text }]}>{ride.status}</Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
+
                     {lastMsg?.text ? (
                         <Text
                             style={[tw`text-xs mt-0.5`, { color: unread > 0 ? colors.textPrimary : colors.textSecondary, fontWeight: unread > 0 ? "600" : "400" }]}

@@ -596,7 +596,13 @@ export default function RideDetails() {
                             {/* Driver avatar + info */}
                             <View style={tw`flex-row items-center px-5 py-4 gap-4`}>
                                 <View style={tw`relative`}>
-                                    <Image source={{ uri: driver.profileImage }} style={tw`w-16 h-16 rounded-full bg-gray-100`} />
+                                    {driver.profileImage ? (
+                                        <Image source={{ uri: driver.profileImage }} style={tw`w-16 h-16 rounded-full bg-gray-100`} />
+                                    ) : (
+                                        <View style={[tw`w-16 h-16 rounded-full items-center justify-center`, { backgroundColor: colors.surfaceMuted }]}>
+                                            <Ionicons name="person" size={28} color={colors.textMuted} />
+                                        </View>
+                                    )}
                                     {isVerified && (
                                         <View style={[tw`absolute -bottom-1 -right-1 w-5 h-5 rounded-full items-center justify-center border-2 border-white`, { backgroundColor: colors.success }]}>
                                             <Ionicons name="checkmark" size={9} color="white" />
@@ -795,7 +801,13 @@ export default function RideDetails() {
                                     {requestedPassengers.map((passenger, index) => (
                                         <View key={`req-${index}`} style={[tw`py-3`, index !== requestedPassengers.length - 1 && tw`border-b`, { borderColor: colors.borderLight }]}>
                                             <View style={tw`flex-row items-center`}>
-                                                <Image source={{ uri: passenger.profileImage }} style={tw`w-10 h-10 rounded-full mr-3`} />
+                                                {passenger.profileImage ? (
+                                                    <Image source={{ uri: passenger.profileImage }} style={tw`w-10 h-10 rounded-full mr-3`} />
+                                                ) : (
+                                                    <View style={[tw`w-10 h-10 rounded-full items-center justify-center mr-3`, { backgroundColor: colors.surfaceMuted }]}>
+                                                        <Ionicons name="person" size={18} color={colors.textMuted} />
+                                                    </View>
+                                                )}
                                                 <View style={tw`flex-1`}>
                                                     <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{passenger.name}</Text>
                                                     <Text style={[tw`text-xs`, { color: "#f59e0b" }]}>₹{passenger.farePaid} · Pending</Text>
@@ -874,7 +886,13 @@ export default function RideDetails() {
                             {confirmedPassengers.length > 0 ? (
                                 confirmedPassengers.map((passenger, index) => (
                                     <View key={index} style={[tw`flex-row items-center py-3`, index !== confirmedPassengers.length - 1 && tw`border-b`, { borderColor: colors.borderLight }]}>
-                                        <Image source={{ uri: passenger.profileImage }} style={tw`w-10 h-10 rounded-full mr-3`} />
+                                        {passenger.profileImage ? (
+                                            <Image source={{ uri: passenger.profileImage }} style={tw`w-10 h-10 rounded-full mr-3`} />
+                                        ) : (
+                                            <View style={[tw`w-10 h-10 rounded-full items-center justify-center mr-3`, { backgroundColor: colors.surfaceMuted }]}>
+                                                <Ionicons name="person" size={18} color={colors.textMuted} />
+                                            </View>
+                                        )}
                                         <View style={tw`flex-1`}>
                                             <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{passenger.name}</Text>
                                             <View style={tw`flex-row items-center gap-2`}>
