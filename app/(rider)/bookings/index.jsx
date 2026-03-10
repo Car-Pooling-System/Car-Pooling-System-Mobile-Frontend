@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import tw from "twrnc";
 import { theme } from "../../../constants/Colors";
+import { calculatePoolingCarbonSavedKg } from "../../../utils/poolingCarbon";
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -42,6 +43,7 @@ export default function Bookings() {
         const dep = new Date(ride.schedule?.departureTime);
         const isPast = dep < new Date() || ride.status === "completed" || ride.status === "cancelled";
         const isOngoing = ride.status === "ongoing";
+        const carbonSavedKg = calculatePoolingCarbonSavedKg(ride, { includeCurrentRider: true });
 
         return (
             <TouchableOpacity
@@ -94,6 +96,10 @@ export default function Bookings() {
                 <View style={tw`flex-row items-center`}>
                     <Ionicons name="location" size={14} color="#ef4444" style={tw`mr-2`} />
                     <Text style={[tw`text-sm flex-1`, { color: colors.textPrimary }]} numberOfLines={1}>{ride.route?.end?.name}</Text>
+                </View>
+                <View style={tw`mt-3 flex-row items-center`}>
+                    <Ionicons name="leaf-outline" size={14} color={colors.primary} style={tw`mr-1.5`} />
+                    <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>Saved {carbonSavedKg} kg CO2</Text>
                 </View>
                 {isPast && (
                     <View style={[tw`mt-3 px-2 py-0.5 rounded self-start`, { backgroundColor: colors.surfaceMuted }]}>

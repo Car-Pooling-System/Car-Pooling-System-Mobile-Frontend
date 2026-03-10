@@ -6,6 +6,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import tw from "twrnc";
 import { theme } from "../../../constants/Colors";
 import { Audio } from "expo-av";
+import { calculatePoolingCarbonSavedKg } from "../../../utils/poolingCarbon";
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -223,6 +224,10 @@ export default function MyRides() {
         const isDriverMode = activeTab === "driver";
         const departureTime = new Date(ride.schedule?.departureTime);
         const isPast = departureTime < new Date() || ride.status === "completed" || ride.status === "cancelled";
+        const carbonSavedKg = calculatePoolingCarbonSavedKg(ride, {
+            includeCurrentRider: !isDriverMode,
+            includeRequestedPassengers: isDriverMode,
+        });
 
         return (
             <TouchableOpacity
@@ -271,6 +276,13 @@ export default function MyRides() {
                             {ride.route?.end?.name}
                         </Text>
                     </View>
+                </View>
+
+                <View style={tw`mb-3 flex-row items-center`}>
+                    <Ionicons name="leaf-outline" size={14} color={colors.primary} style={tw`mr-1.5`} />
+                    <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>
+                        Saved {carbonSavedKg} kg CO2
+                    </Text>
                 </View>
 
                 <View style={[tw`pt-3 border-t flex-row justify-between items-center`, { borderColor: colors.border }]}>
