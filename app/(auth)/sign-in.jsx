@@ -8,7 +8,7 @@ import tw from "twrnc";
 import { theme } from "../../constants/Colors";
 import { FontAwesome, MaterialCommunityIcons } from "@expo/vector-icons";
 
-const BACKEND_URL = process.env.EXPO_BACKEND_URL;
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 export default function SignIn() {
     useWarmUpBrowser();
