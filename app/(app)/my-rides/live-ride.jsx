@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, Image, Alert, StyleSheet, Dimensions, use
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "../../../components/common/MapWrapper";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import tw from "twrnc";
@@ -132,7 +132,7 @@ export default function LiveRide() {
                         fetch(`${BACKEND_URL}/api/rides/${rideId}/update-location`, {
                             method: "POST", headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ userId: user?.id, lat: latitude, lng: longitude }),
-                        }).catch(() => {});
+                        }).catch(() => { });
                     }
                 );
                 locationSubRef.current = sub;

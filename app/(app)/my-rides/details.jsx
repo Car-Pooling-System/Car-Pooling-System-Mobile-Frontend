@@ -2,7 +2,7 @@ import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, use
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "../../../components/common/MapWrapper";
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import tw from "twrnc";
@@ -365,7 +365,7 @@ export default function RideDetails() {
         // Count how many entries belong to this user (self + guests they booked)
         const myEntries = ride?.passengers?.filter(
             p => (p.userId === user.id || p.bookedBy === user.id) &&
-                 (p.status === "confirmed" || p.status === "requested")
+                (p.status === "confirmed" || p.status === "requested")
         ) || [];
         const seatCount = role === "driver" ? 0 : myEntries.length;
         const cancelMsg = role === "driver"
@@ -477,12 +477,12 @@ export default function RideDetails() {
     };
 
     const SEAT_TYPES_LIST = [
-        { type: "front",       label: "Front Seat" },
-        { type: "backWindow",  label: "Back Window Seat" },
-        { type: "backMiddle",  label: "Back Middle Seat" },
+        { type: "front", label: "Front Seat" },
+        { type: "backWindow", label: "Back Window Seat" },
+        { type: "backMiddle", label: "Back Middle Seat" },
         { type: "backArmrest", label: "Back Seat w/ Armrest" },
-        { type: "thirdRow",    label: "Third Row Seat" },
-        { type: "any",         label: "Any Seat" },
+        { type: "thirdRow", label: "Third Row Seat" },
+        { type: "any", label: "Any Seat" },
     ];
 
     const handleChangeSeat = async (passengerUserId, seatType) => {
@@ -682,187 +682,187 @@ export default function RideDetails() {
                     {/* Driver/Rider Info Section */}
                     {role === "rider" ? (
                         <>
-                        <TouchableOpacity
-                            activeOpacity={0.85}
-                            onPress={() => {
-                                router.push({
-                                    pathname: "/(rider)/search/driver-details",
-                                    params: {
-                                        rideId,
-                                        driverName: driver.name || "Driver",
-                                        driverImage: driver.profileImage || "",
-                                        driverRating: String(driver.rating || 0),
-                                        driverReviews: String(driver.reviewsCount || 0),
-                                        driverRidesHosted: String(driver.ridesHosted || 0),
-                                        driverRidesCompleted: String(driver.ridesCompleted || 0),
-                                        driverTrustScore: String(driver.trustScore || 0),
-                                        driverPhone: driver.phoneNumber || "",
-                                        driverHoursDriven: String(driver.hoursDriven || 0),
-                                        driverDistanceKm: String(driver.distanceDrivenKm || 0),
-                                        isVerified: isVerified ? "1" : "0",
-                                        verEmail: verDet.email ? "1" : "0",
-                                        verPhone: verDet.phone ? "1" : "0",
-                                        verLicense: verDet.license ? "1" : "0",
-                                        verVehicle: verDet.vehicle ? "1" : "0",
-                                    },
-                                });
-                            }}
-                            style={[tw`bg-white rounded-2xl mb-6 shadow-sm border overflow-hidden`, { borderColor: colors.border }]}>
-
-                            {/* Section label */}
-                            <View style={[tw`px-5 pt-4 pb-3 flex-row items-center justify-between`, { borderBottomWidth: 1, borderBottomColor: colors.borderLight }]}>
-                                <Text style={[tw`text-xs font-bold tracking-widest`, { color: colors.textSecondary }]}>YOUR DRIVER</Text>
-                                <View style={[tw`flex-row items-center px-2.5 py-1 rounded-full gap-1`, { backgroundColor: isVerified ? colors.successSoft : colors.dangerSoft }]}>
-                                    <Ionicons name={isVerified ? "shield-checkmark" : "shield-outline"} size={11} color={isVerified ? colors.success : colors.danger} />
-                                    <Text style={[tw`text-[10px] font-bold`, { color: isVerified ? colors.success : colors.danger }]}>
-                                        {isVerified ? "Verified Driver" : "Not Fully Verified"}
-                                    </Text>
-                                </View>
-                            </View>
-
-                            {/* Driver avatar + info */}
-                            <View style={tw`flex-row items-center px-5 py-4 gap-4`}>
-                                <View style={tw`relative`}>
-                                    {driver.profileImage ? (
-                                        <Image source={{ uri: driver.profileImage }} style={tw`w-16 h-16 rounded-full bg-gray-100`} />
-                                    ) : (
-                                        <View style={[tw`w-16 h-16 rounded-full items-center justify-center`, { backgroundColor: colors.surfaceMuted }]}>
-                                            <Ionicons name="person" size={28} color={colors.textMuted} />
-                                        </View>
-                                    )}
-                                    {isVerified && (
-                                        <View style={[tw`absolute -bottom-1 -right-1 w-5 h-5 rounded-full items-center justify-center border-2 border-white`, { backgroundColor: colors.success }]}>
-                                            <Ionicons name="checkmark" size={9} color="white" />
-                                        </View>
-                                    )}
-                                </View>
-                                <View style={tw`flex-1`}>
-                                    <Text style={[tw`text-base font-bold`, { color: colors.textPrimary }]}>{driver.name}</Text>
-                                    {/* Rating row */}
-                                    <View style={tw`flex-row items-center gap-1.5 mt-1`}>
-                                        <Ionicons name="star" size={13} color="#f59e0b" />
-                                        <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>
-                                            {driver.rating ? driver.rating.toFixed(1) : '—'}
-                                        </Text>
-                                        {driver.reviewsCount > 0 && (
-                                            <Text style={[tw`text-xs`, { color: colors.textMuted }]}>({driver.reviewsCount} reviews)</Text>
-                                        )}
-                                    </View>
-                                    {/* Rides hosted */}
-                                    {driver.ridesHosted > 0 && (
-                                        <Text style={[tw`text-xs mt-0.5`, { color: colors.textSecondary }]}>
-                                            {driver.ridesHosted} ride{driver.ridesHosted !== 1 ? 's' : ''} hosted
-                                        </Text>
-                                    )}
-                                </View>
-                                <TouchableOpacity
-                                    style={[tw`w-10 h-10 rounded-full items-center justify-center`, { backgroundColor: colors.primarySoft }]}
-                                    onPress={() => Alert.alert('Call Driver', 'This feature is not implemented yet.')}
-                                >
-                                    <Ionicons name="call" size={18} color={colors.primary} />
-                                </TouchableOpacity>
-                                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} style={tw`ml-2`} />
-                            </View>
-
-                            {/* Unverified badges */}
-                            {!isVerified && (
-                                <View style={[tw`flex-row flex-wrap gap-1.5 px-5 pb-3`, { marginTop: -4 }]}>
-                                    <Text style={[tw`text-[10px] w-full mb-0.5`, { color: colors.textMuted }]}>Missing verification:</Text>
-                                    {!verDet.email && <Text style={[tw`text-[9px] px-2 py-0.5 rounded-full font-bold`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>Email</Text>}
-                                    {!verDet.phone && <Text style={[tw`text-[9px] px-2 py-0.5 rounded-full font-bold`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>Phone</Text>}
-                                    {!verDet.license && <Text style={[tw`text-[9px] px-2 py-0.5 rounded-full font-bold`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>License</Text>}
-                                    {!verDet.vehicle && <Text style={[tw`text-[9px] px-2 py-0.5 rounded-full font-bold`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>Vehicle</Text>}
-                                </View>
-                            )}
-
-                            {/* Divider */}
-                            <View style={[tw`mx-5`, { height: 1, backgroundColor: colors.borderLight }]} />
-
-                            {/* Vehicle card */}
-                            {vehicle?.brand ? (
-                                <View style={tw`mx-5 my-4 rounded-xl overflow-hidden`}>
-                                    {vehicle.image ? (
-                                        <Image source={{ uri: vehicle.image }} style={{ width: '100%', height: 140 }} resizeMode="cover" />
-                                    ) : (
-                                        <View style={[tw`items-center justify-center rounded-xl`, { height: 100, backgroundColor: colors.surfaceMuted }]}>
-                                            <MaterialCommunityIcons name="car-side" size={48} color={colors.textMuted} />
-                                        </View>
-                                    )}
-                                    <View style={tw`flex-row items-center mt-2.5`}>
-                                        <View style={tw`flex-1`}>
-                                            <Text style={[tw`font-bold text-sm`, { color: colors.textPrimary }]}>
-                                                {vehicle.brand} {vehicle.model}
-                                                {vehicle.year ? <Text style={[tw`font-normal`, { color: colors.textSecondary }]}> · {vehicle.year}</Text> : null}
-                                            </Text>
-                                            {vehicle.color && (
-                                                <View style={tw`flex-row items-center gap-1.5 mt-0.5`}>
-                                                    <View style={[tw`w-3 h-3 rounded-full border border-gray-200`, { backgroundColor: vehicle.color?.toLowerCase() || '#ccc' }]} />
-                                                    <Text style={[tw`text-xs capitalize`, { color: colors.textSecondary }]}>{vehicle.color}</Text>
-                                                </View>
-                                            )}
-                                            <View style={tw`flex-row items-center gap-1 mt-1`}>
-                                                <MaterialCommunityIcons
-                                                    name={vehicle.hasLuggageSpace ? "bag-checked" : "bag-personal-off"}
-                                                    size={13}
-                                                    color={vehicle.hasLuggageSpace ? colors.success : colors.textMuted}
-                                                />
-                                                <Text style={[tw`text-[10px] font-bold`, { color: vehicle.hasLuggageSpace ? colors.success : colors.textMuted }]}>
-                                                    {vehicle.hasLuggageSpace ? "Luggage Space" : "No Luggage Space"}
-                                                </Text>
-                                            </View>
-                                        </View>
-                                        {vehicle.licensePlate && (
-                                            <View style={[tw`px-3 py-1.5 rounded-lg border`, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}>
-                                                <Text style={[tw`text-xs font-bold tracking-widest`, { color: colors.textPrimary }]}>{vehicle.licensePlate}</Text>
-                                            </View>
-                                        )}
-                                    </View>
-                                </View>
-                            ) : (
-                                <View style={[tw`mx-5 my-4 flex-row items-center gap-3 p-3 rounded-xl`, { backgroundColor: colors.surfaceMuted }]}>
-                                    <MaterialCommunityIcons name="car-off" size={20} color={colors.textMuted} />
-                                    <Text style={[tw`text-xs flex-1`, { color: colors.textMuted }]}>Vehicle details not available for this ride.</Text>
-                                </View>
-                            )}
-                        </TouchableOpacity>
-
-                        {/* ── Rider Chat Section ── */}
-                        <View style={[tw`bg-white rounded-2xl p-5 mb-6 shadow-sm border`, { borderColor: colors.border }]}>
-                            <View style={tw`flex-row items-center gap-2 mb-4`}>
-                                <Ionicons name="chatbubbles" size={18} color={colors.primary} />
-                                <Text style={[tw`text-sm font-bold`, { color: colors.textSecondary }]}>CHAT</Text>
-                            </View>
-
-                            {/* Chat with Driver */}
                             <TouchableOpacity
-                                onPress={() => openDMChat({ userId: driver.userId, name: driver.name, profileImage: driver.profileImage }, "driver")}
-                                style={[tw`flex-row items-center gap-3 p-3 rounded-xl mb-3 border`, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
-                            >
-                                {driver.profileImage ? (
-                                    <Image source={{ uri: driver.profileImage }} style={tw`w-10 h-10 rounded-full`} />
-                                ) : (
-                                    <View style={[tw`w-10 h-10 rounded-full items-center justify-center`, { backgroundColor: colors.primarySoft }]}>
-                                        <Ionicons name="person" size={18} color={colors.primary} />
+                                activeOpacity={0.85}
+                                onPress={() => {
+                                    router.push({
+                                        pathname: "/(rider)/search/driver-details",
+                                        params: {
+                                            rideId,
+                                            driverName: driver.name || "Driver",
+                                            driverImage: driver.profileImage || "",
+                                            driverRating: String(driver.rating || 0),
+                                            driverReviews: String(driver.reviewsCount || 0),
+                                            driverRidesHosted: String(driver.ridesHosted || 0),
+                                            driverRidesCompleted: String(driver.ridesCompleted || 0),
+                                            driverTrustScore: String(driver.trustScore || 0),
+                                            driverPhone: driver.phoneNumber || "",
+                                            driverHoursDriven: String(driver.hoursDriven || 0),
+                                            driverDistanceKm: String(driver.distanceDrivenKm || 0),
+                                            isVerified: isVerified ? "1" : "0",
+                                            verEmail: verDet.email ? "1" : "0",
+                                            verPhone: verDet.phone ? "1" : "0",
+                                            verLicense: verDet.license ? "1" : "0",
+                                            verVehicle: verDet.vehicle ? "1" : "0",
+                                        },
+                                    });
+                                }}
+                                style={[tw`bg-white rounded-2xl mb-6 shadow-sm border overflow-hidden`, { borderColor: colors.border }]}>
+
+                                {/* Section label */}
+                                <View style={[tw`px-5 pt-4 pb-3 flex-row items-center justify-between`, { borderBottomWidth: 1, borderBottomColor: colors.borderLight }]}>
+                                    <Text style={[tw`text-xs font-bold tracking-widest`, { color: colors.textSecondary }]}>YOUR DRIVER</Text>
+                                    <View style={[tw`flex-row items-center px-2.5 py-1 rounded-full gap-1`, { backgroundColor: isVerified ? colors.successSoft : colors.dangerSoft }]}>
+                                        <Ionicons name={isVerified ? "shield-checkmark" : "shield-outline"} size={11} color={isVerified ? colors.success : colors.danger} />
+                                        <Text style={[tw`text-[10px] font-bold`, { color: isVerified ? colors.success : colors.danger }]}>
+                                            {isVerified ? "Verified Driver" : "Not Fully Verified"}
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                {/* Driver avatar + info */}
+                                <View style={tw`flex-row items-center px-5 py-4 gap-4`}>
+                                    <View style={tw`relative`}>
+                                        {driver.profileImage ? (
+                                            <Image source={{ uri: driver.profileImage }} style={tw`w-16 h-16 rounded-full bg-gray-100`} />
+                                        ) : (
+                                            <View style={[tw`w-16 h-16 rounded-full items-center justify-center`, { backgroundColor: colors.surfaceMuted }]}>
+                                                <Ionicons name="person" size={28} color={colors.textMuted} />
+                                            </View>
+                                        )}
+                                        {isVerified && (
+                                            <View style={[tw`absolute -bottom-1 -right-1 w-5 h-5 rounded-full items-center justify-center border-2 border-white`, { backgroundColor: colors.success }]}>
+                                                <Ionicons name="checkmark" size={9} color="white" />
+                                            </View>
+                                        )}
+                                    </View>
+                                    <View style={tw`flex-1`}>
+                                        <Text style={[tw`text-base font-bold`, { color: colors.textPrimary }]}>{driver.name}</Text>
+                                        {/* Rating row */}
+                                        <View style={tw`flex-row items-center gap-1.5 mt-1`}>
+                                            <Ionicons name="star" size={13} color="#f59e0b" />
+                                            <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>
+                                                {driver.rating ? driver.rating.toFixed(1) : '—'}
+                                            </Text>
+                                            {driver.reviewsCount > 0 && (
+                                                <Text style={[tw`text-xs`, { color: colors.textMuted }]}>({driver.reviewsCount} reviews)</Text>
+                                            )}
+                                        </View>
+                                        {/* Rides hosted */}
+                                        {driver.ridesHosted > 0 && (
+                                            <Text style={[tw`text-xs mt-0.5`, { color: colors.textSecondary }]}>
+                                                {driver.ridesHosted} ride{driver.ridesHosted !== 1 ? 's' : ''} hosted
+                                            </Text>
+                                        )}
+                                    </View>
+                                    <TouchableOpacity
+                                        style={[tw`w-10 h-10 rounded-full items-center justify-center`, { backgroundColor: colors.primarySoft }]}
+                                        onPress={() => Alert.alert('Call Driver', 'This feature is not implemented yet.')}
+                                    >
+                                        <Ionicons name="call" size={18} color={colors.primary} />
+                                    </TouchableOpacity>
+                                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} style={tw`ml-2`} />
+                                </View>
+
+                                {/* Unverified badges */}
+                                {!isVerified && (
+                                    <View style={[tw`flex-row flex-wrap gap-1.5 px-5 pb-3`, { marginTop: -4 }]}>
+                                        <Text style={[tw`text-[10px] w-full mb-0.5`, { color: colors.textMuted }]}>Missing verification:</Text>
+                                        {!verDet.email && <Text style={[tw`text-[9px] px-2 py-0.5 rounded-full font-bold`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>Email</Text>}
+                                        {!verDet.phone && <Text style={[tw`text-[9px] px-2 py-0.5 rounded-full font-bold`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>Phone</Text>}
+                                        {!verDet.license && <Text style={[tw`text-[9px] px-2 py-0.5 rounded-full font-bold`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>License</Text>}
+                                        {!verDet.vehicle && <Text style={[tw`text-[9px] px-2 py-0.5 rounded-full font-bold`, { backgroundColor: colors.dangerSoft, color: colors.danger }]}>Vehicle</Text>}
                                     </View>
                                 )}
-                                <View style={tw`flex-1`}>
-                                    <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{driver.name}</Text>
-                                    <Text style={[tw`text-xs`, { color: colors.textMuted }]}>Message the driver</Text>
-                                </View>
-                                <View style={[tw`p-2 rounded-full`, { backgroundColor: colors.primarySoft }]}>
-                                    <Ionicons name="chatbubble" size={16} color={colors.primary} />
-                                </View>
+
+                                {/* Divider */}
+                                <View style={[tw`mx-5`, { height: 1, backgroundColor: colors.borderLight }]} />
+
+                                {/* Vehicle card */}
+                                {vehicle?.brand ? (
+                                    <View style={tw`mx-5 my-4 rounded-xl overflow-hidden`}>
+                                        {vehicle.image ? (
+                                            <Image source={{ uri: vehicle.image }} style={{ width: '100%', height: 140 }} resizeMode="cover" />
+                                        ) : (
+                                            <View style={[tw`items-center justify-center rounded-xl`, { height: 100, backgroundColor: colors.surfaceMuted }]}>
+                                                <MaterialCommunityIcons name="car-side" size={48} color={colors.textMuted} />
+                                            </View>
+                                        )}
+                                        <View style={tw`flex-row items-center mt-2.5`}>
+                                            <View style={tw`flex-1`}>
+                                                <Text style={[tw`font-bold text-sm`, { color: colors.textPrimary }]}>
+                                                    {vehicle.brand} {vehicle.model}
+                                                    {vehicle.year ? <Text style={[tw`font-normal`, { color: colors.textSecondary }]}> · {vehicle.year}</Text> : null}
+                                                </Text>
+                                                {vehicle.color && (
+                                                    <View style={tw`flex-row items-center gap-1.5 mt-0.5`}>
+                                                        <View style={[tw`w-3 h-3 rounded-full border border-gray-200`, { backgroundColor: vehicle.color?.toLowerCase() || '#ccc' }]} />
+                                                        <Text style={[tw`text-xs capitalize`, { color: colors.textSecondary }]}>{vehicle.color}</Text>
+                                                    </View>
+                                                )}
+                                                <View style={tw`flex-row items-center gap-1 mt-1`}>
+                                                    <MaterialCommunityIcons
+                                                        name={vehicle.hasLuggageSpace ? "bag-checked" : "bag-personal-off"}
+                                                        size={13}
+                                                        color={vehicle.hasLuggageSpace ? colors.success : colors.textMuted}
+                                                    />
+                                                    <Text style={[tw`text-[10px] font-bold`, { color: vehicle.hasLuggageSpace ? colors.success : colors.textMuted }]}>
+                                                        {vehicle.hasLuggageSpace ? "Luggage Space" : "No Luggage Space"}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                            {vehicle.licensePlate && (
+                                                <View style={[tw`px-3 py-1.5 rounded-lg border`, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}>
+                                                    <Text style={[tw`text-xs font-bold tracking-widest`, { color: colors.textPrimary }]}>{vehicle.licensePlate}</Text>
+                                                </View>
+                                            )}
+                                        </View>
+                                    </View>
+                                ) : (
+                                    <View style={[tw`mx-5 my-4 flex-row items-center gap-3 p-3 rounded-xl`, { backgroundColor: colors.surfaceMuted }]}>
+                                        <MaterialCommunityIcons name="car-off" size={20} color={colors.textMuted} />
+                                        <Text style={[tw`text-xs flex-1`, { color: colors.textMuted }]}>Vehicle details not available for this ride.</Text>
+                                    </View>
+                                )}
                             </TouchableOpacity>
 
-                            {/* Group Chat */}
-                            <TouchableOpacity
-                                onPress={openGroupChat}
-                                style={[tw`flex-row items-center justify-center gap-2 py-3 rounded-xl`, { backgroundColor: colors.primary }]}
-                            >
-                                <Ionicons name="chatbubbles" size={18} color="white" />
-                                <Text style={tw`text-white font-bold text-sm`}>Group Chat</Text>
-                            </TouchableOpacity>
-                        </View>
+                            {/* ── Rider Chat Section ── */}
+                            <View style={[tw`bg-white rounded-2xl p-5 mb-6 shadow-sm border`, { borderColor: colors.border }]}>
+                                <View style={tw`flex-row items-center gap-2 mb-4`}>
+                                    <Ionicons name="chatbubbles" size={18} color={colors.primary} />
+                                    <Text style={[tw`text-sm font-bold`, { color: colors.textSecondary }]}>CHAT</Text>
+                                </View>
+
+                                {/* Chat with Driver */}
+                                <TouchableOpacity
+                                    onPress={() => openDMChat({ userId: driver.userId, name: driver.name, profileImage: driver.profileImage }, "driver")}
+                                    style={[tw`flex-row items-center gap-3 p-3 rounded-xl mb-3 border`, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
+                                >
+                                    {driver.profileImage ? (
+                                        <Image source={{ uri: driver.profileImage }} style={tw`w-10 h-10 rounded-full`} />
+                                    ) : (
+                                        <View style={[tw`w-10 h-10 rounded-full items-center justify-center`, { backgroundColor: colors.primarySoft }]}>
+                                            <Ionicons name="person" size={18} color={colors.primary} />
+                                        </View>
+                                    )}
+                                    <View style={tw`flex-1`}>
+                                        <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{driver.name}</Text>
+                                        <Text style={[tw`text-xs`, { color: colors.textMuted }]}>Message the driver</Text>
+                                    </View>
+                                    <View style={[tw`p-2 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                        <Ionicons name="chatbubble" size={16} color={colors.primary} />
+                                    </View>
+                                </TouchableOpacity>
+
+                                {/* Group Chat */}
+                                <TouchableOpacity
+                                    onPress={openGroupChat}
+                                    style={[tw`flex-row items-center justify-center gap-2 py-3 rounded-xl`, { backgroundColor: colors.primary }]}
+                                >
+                                    <Ionicons name="chatbubbles" size={18} color="white" />
+                                    <Text style={tw`text-white font-bold text-sm`}>Group Chat</Text>
+                                </TouchableOpacity>
+                            </View>
                         </>
                     ) : (
                         <View>
@@ -933,174 +933,174 @@ export default function RideDetails() {
 
                             {/* Passengers */}
                             <View style={[tw`bg-white rounded-2xl p-6 mb-6 shadow-sm border`, { borderColor: colors.border }]}>
-                            <View style={tw`flex-row justify-between items-center mb-4`}>
-                                <View style={tw`flex-row items-center gap-2`}>
-                                    <Text style={[tw`text-sm font-bold`, { color: colors.textSecondary }]}>PASSENGERS</Text>
-                                    <TouchableOpacity
-                                        onPress={() => { setActiveSeat(null); setShowSeatMap(true); }}
-                                        style={[tw`flex-row items-center gap-1 px-2 py-0.5 rounded-full`, { backgroundColor: colors.primarySoft }]}
-                                    >
-                                        <MaterialCommunityIcons name="car-seat" size={10} color={colors.primary} />
-                                        <Text style={[tw`text-[9px] font-bold`, { color: colors.primary }]}>Seat Map</Text>
-                                    </TouchableOpacity>
-                                </View>
-                                <View style={tw`flex-row items-center gap-2`}>
-                                    <View style={[tw`flex-row items-center px-2 py-0.5 rounded-full`, { backgroundColor: isVerified ? colors.successSoft : colors.dangerSoft }]}>
-                                        <Ionicons name={isVerified ? "shield-checkmark" : "shield-outline"} size={11} color={isVerified ? colors.success : colors.danger} />
-                                        <Text style={[tw`text-[10px] font-bold ml-0.5`, { color: isVerified ? colors.success : colors.danger }]}>
-                                            {isVerified ? "Verified" : "Unverified"}
-                                        </Text>
-                                    </View>
-                                    <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>{confirmedPassengers.length}/{seats.total} Booked</Text>
-                                </View>
-                            </View>
-
-                            {/* Pending Requests Section */}
-                            {requestedPassengers.length > 0 && (
-                                <View style={tw`mb-4`}>
-                                    <View style={[tw`flex-row items-center gap-2 mb-3 px-2 py-2 rounded-xl`, { backgroundColor: "rgba(245,158,11,0.08)" }]}>
-                                        <MaterialCommunityIcons name="clock-outline" size={16} color="#f59e0b" />
-                                        <Text style={[tw`text-xs font-bold`, { color: "#f59e0b" }]}>
-                                            {requestedPassengers.length} PENDING REQUEST{requestedPassengers.length !== 1 ? "S" : ""}
-                                        </Text>
-                                    </View>
-                                    {requestedPassengers.map((passenger, index) => (
-                                        <View key={`req-${index}`} style={[tw`py-3`, index !== requestedPassengers.length - 1 && tw`border-b`, { borderColor: colors.borderLight }]}>
-                                            <View style={tw`flex-row items-center`}>
-                                                {passenger.profileImage ? (
-                                                    <Image source={{ uri: passenger.profileImage }} style={tw`w-10 h-10 rounded-full mr-3`} />
-                                                ) : (
-                                                    <View style={[tw`w-10 h-10 rounded-full items-center justify-center mr-3`, { backgroundColor: colors.surfaceMuted }]}>
-                                                        <Ionicons name="person" size={18} color={colors.textMuted} />
-                                                    </View>
-                                                )}
-                                                <View style={tw`flex-1`}>
-                                                    <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{passenger.name}</Text>
-                                                    <Text style={[tw`text-xs`, { color: "#f59e0b" }]}>₹{passenger.farePaid} · Pending</Text>
-                                                </View>
-                                                <View style={tw`flex-row gap-2`}>
-                                                    <TouchableOpacity
-                                                        onPress={() => handleConfirmRequest(passenger.userId)}
-                                                        disabled={confirmingPassenger === passenger.userId}
-                                                        style={[tw`px-3 py-2 rounded-xl`, { backgroundColor: colors.success }]}
-                                                    >
-                                                        {confirmingPassenger === passenger.userId ? (
-                                                            <ActivityIndicator size="small" color="white" />
-                                                        ) : (
-                                                            <Ionicons name="checkmark" size={16} color="white" />
-                                                        )}
-                                                    </TouchableOpacity>
-                                                    <TouchableOpacity
-                                                        onPress={() => handleRejectRequest(passenger.userId)}
-                                                        disabled={rejectingPassenger === passenger.userId}
-                                                        style={[tw`px-3 py-2 rounded-xl`, { backgroundColor: "#ef4444" }]}
-                                                    >
-                                                        {rejectingPassenger === passenger.userId ? (
-                                                            <ActivityIndicator size="small" color="white" />
-                                                        ) : (
-                                                            <Ionicons name="close" size={16} color="white" />
-                                                        )}
-                                                    </TouchableOpacity>
-                                                </View>
-                                            </View>
-                                            {/* Seat Assignment Row */}
-                                            <View style={tw`flex-row items-center mt-2 ml-13`}>
-                                                <MaterialCommunityIcons name="car-seat" size={14} color={colors.textSecondary} style={tw`mr-1.5`} />
-                                                <Text style={[tw`text-xs mr-2`, { color: colors.textSecondary }]}>Seat:</Text>
-                                                <TouchableOpacity
-                                                    onPress={() => setShowSeatPicker(showSeatPicker === passenger.userId ? null : passenger.userId)}
-                                                    style={[tw`flex-row items-center px-2.5 py-1 rounded-lg border`, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
-                                                >
-                                                    <Text style={[tw`text-xs font-bold mr-1`, { color: colors.primary }]}>
-                                                        {passenger.seatLabel || 'Any Seat'}
-                                                    </Text>
-                                                    <Ionicons name={showSeatPicker === passenger.userId ? "chevron-up" : "chevron-down"} size={12} color={colors.primary} />
-                                                </TouchableOpacity>
-                                                {changingSeat === passenger.userId && (
-                                                    <ActivityIndicator size="small" color={colors.primary} style={tw`ml-2`} />
-                                                )}
-                                            </View>
-                                            {/* Seat Picker Dropdown */}
-                                            {showSeatPicker === passenger.userId && (
-                                                <View style={[tw`ml-13 mt-2 rounded-xl border overflow-hidden`, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                                                    {SEAT_TYPES_LIST.map((st) => {
-                                                        const isSelected = (passenger.seatType || 'any') === st.type;
-                                                        return (
-                                                            <TouchableOpacity
-                                                                key={st.type}
-                                                                onPress={() => handleChangeSeat(passenger.userId, st.type)}
-                                                                disabled={changingSeat === passenger.userId}
-                                                                style={[tw`flex-row items-center px-3 py-2.5 border-b`, { borderColor: colors.borderLight, backgroundColor: isSelected ? colors.primarySoft : 'transparent' }]}
-                                                            >
-                                                                <MaterialCommunityIcons name="car-seat" size={14} color={isSelected ? colors.primary : colors.textMuted} style={tw`mr-2`} />
-                                                                <Text style={[tw`text-xs flex-1`, { color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '400' }]}>{st.label}</Text>
-                                                                {isSelected && <Ionicons name="checkmark-circle" size={16} color={colors.primary} />}
-                                                            </TouchableOpacity>
-                                                        );
-                                                    })}
-                                                </View>
-                                            )}
-                                        </View>
-                                    ))}
-                                    {confirmedPassengers.length > 0 && (
-                                        <View style={[tw`mt-3 mb-1`, { height: 1, backgroundColor: colors.border }]} />
-                                    )}
-                                </View>
-                            )}
-
-                            {/* Confirmed Passengers */}
-                            {confirmedPassengers.length > 0 ? (
-                                confirmedPassengers.map((passenger, index) => (
-                                    <View key={index} style={[tw`flex-row items-center py-3`, index !== confirmedPassengers.length - 1 && tw`border-b`, { borderColor: colors.borderLight }]}>
-                                        {passenger.profileImage ? (
-                                            <Image source={{ uri: passenger.profileImage }} style={tw`w-10 h-10 rounded-full mr-3`} />
-                                        ) : (
-                                            <View style={[tw`w-10 h-10 rounded-full items-center justify-center mr-3`, { backgroundColor: colors.surfaceMuted }]}>
-                                                <Ionicons name={passenger.isGuest ? "people" : "person"} size={18} color={colors.textMuted} />
-                                            </View>
-                                        )}
-                                        <View style={tw`flex-1`}>
-                                            <View style={tw`flex-row items-center gap-1.5`}>
-                                                <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{passenger.name}</Text>
-                                                {passenger.isGuest && (
-                                                    <View style={[tw`px-1.5 py-0.5 rounded`, { backgroundColor: "rgba(245,158,11,0.12)" }]}>
-                                                        <Text style={[tw`text-[8px] font-bold`, { color: "#f59e0b" }]}>GUEST</Text>
-                                                    </View>
-                                                )}
-                                            </View>
-                                            <View style={tw`flex-row items-center gap-2 flex-wrap`}>
-                                                <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>₹{passenger.farePaid}</Text>
-                                                {passenger.seatLabel && (
-                                                    <View style={[tw`flex-row items-center gap-0.5 px-1.5 py-0.5 rounded-full`, { backgroundColor: colors.primarySoft }]}>
-                                                        <MaterialCommunityIcons name="car-seat" size={9} color={colors.primary} />
-                                                        <Text style={[tw`text-[9px] font-bold`, { color: colors.primary }]}>{passenger.seatLabel}</Text>
-                                                    </View>
-                                                )}
-                                                {passenger.isGuest && passenger.bookedBy && (() => {
-                                                    const booker = passengers?.find(p => p.userId === passenger.bookedBy && !p.isGuest);
-                                                    return booker ? (
-                                                        <Text style={[tw`text-[9px]`, { color: colors.textMuted }]}>via {booker.name?.split(" ")[0]}</Text>
-                                                    ) : null;
-                                                })()}
-                                            </View>
-                                        </View>
-                                        <TouchableOpacity onPress={() => openDMChat(passenger, "rider")} style={[tw`p-2 rounded-full`, { backgroundColor: colors.primarySoft }]}>
-                                            <Ionicons name="chatbubble" size={16} color={colors.primary} />
+                                <View style={tw`flex-row justify-between items-center mb-4`}>
+                                    <View style={tw`flex-row items-center gap-2`}>
+                                        <Text style={[tw`text-sm font-bold`, { color: colors.textSecondary }]}>PASSENGERS</Text>
+                                        <TouchableOpacity
+                                            onPress={() => { setActiveSeat(null); setShowSeatMap(true); }}
+                                            style={[tw`flex-row items-center gap-1 px-2 py-0.5 rounded-full`, { backgroundColor: colors.primarySoft }]}
+                                        >
+                                            <MaterialCommunityIcons name="car-seat" size={10} color={colors.primary} />
+                                            <Text style={[tw`text-[9px] font-bold`, { color: colors.primary }]}>Seat Map</Text>
                                         </TouchableOpacity>
                                     </View>
-                                ))
-                            ) : requestedPassengers.length === 0 ? (
-                                <Text style={[tw`text-sm italic text-center py-4`, { color: colors.textSecondary }]}>No passengers or requests yet.</Text>
-                            ) : null}
+                                    <View style={tw`flex-row items-center gap-2`}>
+                                        <View style={[tw`flex-row items-center px-2 py-0.5 rounded-full`, { backgroundColor: isVerified ? colors.successSoft : colors.dangerSoft }]}>
+                                            <Ionicons name={isVerified ? "shield-checkmark" : "shield-outline"} size={11} color={isVerified ? colors.success : colors.danger} />
+                                            <Text style={[tw`text-[10px] font-bold ml-0.5`, { color: isVerified ? colors.success : colors.danger }]}>
+                                                {isVerified ? "Verified" : "Unverified"}
+                                            </Text>
+                                        </View>
+                                        <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>{confirmedPassengers.length}/{seats.total} Booked</Text>
+                                    </View>
+                                </View>
 
-                            {/* Group Chat Button */}
-                            {confirmedPassengers.length > 0 && (
-                                <TouchableOpacity onPress={openGroupChat} style={[tw`flex-row items-center justify-center gap-2 mt-4 py-3 rounded-xl`, { backgroundColor: colors.primary }]}>
-                                    <Ionicons name="chatbubbles" size={18} color="white" />
-                                    <Text style={tw`text-white font-bold text-sm`}>Group Chat</Text>
-                                </TouchableOpacity>
-                            )}
-                        </View>
+                                {/* Pending Requests Section */}
+                                {requestedPassengers.length > 0 && (
+                                    <View style={tw`mb-4`}>
+                                        <View style={[tw`flex-row items-center gap-2 mb-3 px-2 py-2 rounded-xl`, { backgroundColor: "rgba(245,158,11,0.08)" }]}>
+                                            <MaterialCommunityIcons name="clock-outline" size={16} color="#f59e0b" />
+                                            <Text style={[tw`text-xs font-bold`, { color: "#f59e0b" }]}>
+                                                {requestedPassengers.length} PENDING REQUEST{requestedPassengers.length !== 1 ? "S" : ""}
+                                            </Text>
+                                        </View>
+                                        {requestedPassengers.map((passenger, index) => (
+                                            <View key={`req-${index}`} style={[tw`py-3`, index !== requestedPassengers.length - 1 && tw`border-b`, { borderColor: colors.borderLight }]}>
+                                                <View style={tw`flex-row items-center`}>
+                                                    {passenger.profileImage ? (
+                                                        <Image source={{ uri: passenger.profileImage }} style={tw`w-10 h-10 rounded-full mr-3`} />
+                                                    ) : (
+                                                        <View style={[tw`w-10 h-10 rounded-full items-center justify-center mr-3`, { backgroundColor: colors.surfaceMuted }]}>
+                                                            <Ionicons name="person" size={18} color={colors.textMuted} />
+                                                        </View>
+                                                    )}
+                                                    <View style={tw`flex-1`}>
+                                                        <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{passenger.name}</Text>
+                                                        <Text style={[tw`text-xs`, { color: "#f59e0b" }]}>₹{passenger.farePaid} · Pending</Text>
+                                                    </View>
+                                                    <View style={tw`flex-row gap-2`}>
+                                                        <TouchableOpacity
+                                                            onPress={() => handleConfirmRequest(passenger.userId)}
+                                                            disabled={confirmingPassenger === passenger.userId}
+                                                            style={[tw`px-3 py-2 rounded-xl`, { backgroundColor: colors.success }]}
+                                                        >
+                                                            {confirmingPassenger === passenger.userId ? (
+                                                                <ActivityIndicator size="small" color="white" />
+                                                            ) : (
+                                                                <Ionicons name="checkmark" size={16} color="white" />
+                                                            )}
+                                                        </TouchableOpacity>
+                                                        <TouchableOpacity
+                                                            onPress={() => handleRejectRequest(passenger.userId)}
+                                                            disabled={rejectingPassenger === passenger.userId}
+                                                            style={[tw`px-3 py-2 rounded-xl`, { backgroundColor: "#ef4444" }]}
+                                                        >
+                                                            {rejectingPassenger === passenger.userId ? (
+                                                                <ActivityIndicator size="small" color="white" />
+                                                            ) : (
+                                                                <Ionicons name="close" size={16} color="white" />
+                                                            )}
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                </View>
+                                                {/* Seat Assignment Row */}
+                                                <View style={tw`flex-row items-center mt-2 ml-13`}>
+                                                    <MaterialCommunityIcons name="car-seat" size={14} color={colors.textSecondary} style={tw`mr-1.5`} />
+                                                    <Text style={[tw`text-xs mr-2`, { color: colors.textSecondary }]}>Seat:</Text>
+                                                    <TouchableOpacity
+                                                        onPress={() => setShowSeatPicker(showSeatPicker === passenger.userId ? null : passenger.userId)}
+                                                        style={[tw`flex-row items-center px-2.5 py-1 rounded-lg border`, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
+                                                    >
+                                                        <Text style={[tw`text-xs font-bold mr-1`, { color: colors.primary }]}>
+                                                            {passenger.seatLabel || 'Any Seat'}
+                                                        </Text>
+                                                        <Ionicons name={showSeatPicker === passenger.userId ? "chevron-up" : "chevron-down"} size={12} color={colors.primary} />
+                                                    </TouchableOpacity>
+                                                    {changingSeat === passenger.userId && (
+                                                        <ActivityIndicator size="small" color={colors.primary} style={tw`ml-2`} />
+                                                    )}
+                                                </View>
+                                                {/* Seat Picker Dropdown */}
+                                                {showSeatPicker === passenger.userId && (
+                                                    <View style={[tw`ml-13 mt-2 rounded-xl border overflow-hidden`, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                                                        {SEAT_TYPES_LIST.map((st) => {
+                                                            const isSelected = (passenger.seatType || 'any') === st.type;
+                                                            return (
+                                                                <TouchableOpacity
+                                                                    key={st.type}
+                                                                    onPress={() => handleChangeSeat(passenger.userId, st.type)}
+                                                                    disabled={changingSeat === passenger.userId}
+                                                                    style={[tw`flex-row items-center px-3 py-2.5 border-b`, { borderColor: colors.borderLight, backgroundColor: isSelected ? colors.primarySoft : 'transparent' }]}
+                                                                >
+                                                                    <MaterialCommunityIcons name="car-seat" size={14} color={isSelected ? colors.primary : colors.textMuted} style={tw`mr-2`} />
+                                                                    <Text style={[tw`text-xs flex-1`, { color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '400' }]}>{st.label}</Text>
+                                                                    {isSelected && <Ionicons name="checkmark-circle" size={16} color={colors.primary} />}
+                                                                </TouchableOpacity>
+                                                            );
+                                                        })}
+                                                    </View>
+                                                )}
+                                            </View>
+                                        ))}
+                                        {confirmedPassengers.length > 0 && (
+                                            <View style={[tw`mt-3 mb-1`, { height: 1, backgroundColor: colors.border }]} />
+                                        )}
+                                    </View>
+                                )}
+
+                                {/* Confirmed Passengers */}
+                                {confirmedPassengers.length > 0 ? (
+                                    confirmedPassengers.map((passenger, index) => (
+                                        <View key={index} style={[tw`flex-row items-center py-3`, index !== confirmedPassengers.length - 1 && tw`border-b`, { borderColor: colors.borderLight }]}>
+                                            {passenger.profileImage ? (
+                                                <Image source={{ uri: passenger.profileImage }} style={tw`w-10 h-10 rounded-full mr-3`} />
+                                            ) : (
+                                                <View style={[tw`w-10 h-10 rounded-full items-center justify-center mr-3`, { backgroundColor: colors.surfaceMuted }]}>
+                                                    <Ionicons name={passenger.isGuest ? "people" : "person"} size={18} color={colors.textMuted} />
+                                                </View>
+                                            )}
+                                            <View style={tw`flex-1`}>
+                                                <View style={tw`flex-row items-center gap-1.5`}>
+                                                    <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{passenger.name}</Text>
+                                                    {passenger.isGuest && (
+                                                        <View style={[tw`px-1.5 py-0.5 rounded`, { backgroundColor: "rgba(245,158,11,0.12)" }]}>
+                                                            <Text style={[tw`text-[8px] font-bold`, { color: "#f59e0b" }]}>GUEST</Text>
+                                                        </View>
+                                                    )}
+                                                </View>
+                                                <View style={tw`flex-row items-center gap-2 flex-wrap`}>
+                                                    <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>₹{passenger.farePaid}</Text>
+                                                    {passenger.seatLabel && (
+                                                        <View style={[tw`flex-row items-center gap-0.5 px-1.5 py-0.5 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                                            <MaterialCommunityIcons name="car-seat" size={9} color={colors.primary} />
+                                                            <Text style={[tw`text-[9px] font-bold`, { color: colors.primary }]}>{passenger.seatLabel}</Text>
+                                                        </View>
+                                                    )}
+                                                    {passenger.isGuest && passenger.bookedBy && (() => {
+                                                        const booker = passengers?.find(p => p.userId === passenger.bookedBy && !p.isGuest);
+                                                        return booker ? (
+                                                            <Text style={[tw`text-[9px]`, { color: colors.textMuted }]}>via {booker.name?.split(" ")[0]}</Text>
+                                                        ) : null;
+                                                    })()}
+                                                </View>
+                                            </View>
+                                            <TouchableOpacity onPress={() => openDMChat(passenger, "rider")} style={[tw`p-2 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                                <Ionicons name="chatbubble" size={16} color={colors.primary} />
+                                            </TouchableOpacity>
+                                        </View>
+                                    ))
+                                ) : requestedPassengers.length === 0 ? (
+                                    <Text style={[tw`text-sm italic text-center py-4`, { color: colors.textSecondary }]}>No passengers or requests yet.</Text>
+                                ) : null}
+
+                                {/* Group Chat Button */}
+                                {confirmedPassengers.length > 0 && (
+                                    <TouchableOpacity onPress={openGroupChat} style={[tw`flex-row items-center justify-center gap-2 mt-4 py-3 rounded-xl`, { backgroundColor: colors.primary }]}>
+                                        <Ionicons name="chatbubbles" size={18} color="white" />
+                                        <Text style={tw`text-white font-bold text-sm`}>Group Chat</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
                         </View>
                     )}
 

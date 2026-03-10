@@ -5,7 +5,7 @@ import {
 import { useState, useRef, useEffect } from "react";
 import { useUser } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "../../../components/common/MapWrapper";
 import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
 import polyline from "@mapbox/polyline";
 import * as Location from "expo-location";

@@ -9,9 +9,9 @@ import { useRouter } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import DateTimePicker from "../../../components/common/DateTimeWrapper";
 import * as Location from "expo-location";
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "../../../components/common/MapWrapper";
 import tw from "twrnc";
 import { theme } from "../../../constants/Colors";
 import { decodePolyline } from "../../../utils/polyline";
@@ -456,7 +456,7 @@ export default function SearchRides() {
     /* ── sort: booked first ─────────────────────── */
     const { pinnedRides, otherRides } = useMemo(() => {
         const pinned = rides.filter((r) => bookedRideIds.has(r._id?.toString()) || requestedRideIds.has(r._id?.toString()));
-        const other  = rides.filter((r) => !bookedRideIds.has(r._id?.toString()) && !requestedRideIds.has(r._id?.toString()));
+        const other = rides.filter((r) => !bookedRideIds.has(r._id?.toString()) && !requestedRideIds.has(r._id?.toString()));
         return { pinnedRides: pinned, otherRides: other };
     }, [rides, bookedRideIds, requestedRideIds]);
 
@@ -496,11 +496,11 @@ export default function SearchRides() {
     /* ── ride card ────────────────────────────────── */
     const renderRide = useCallback(
         (item) => {
-            const rideId   = item._id?.toString();
+            const rideId = item._id?.toString();
             const isBooked = bookedRideIds.has(rideId);
             const isRequested = requestedRideIds.has(rideId);
             const isDriver = item.driver?.userId === user?.id;
-            const dep      = new Date(item.schedule?.departureTime);
+            const dep = new Date(item.schedule?.departureTime);
             const isUpcoming = dep > new Date();
 
             let badge = null;
@@ -527,17 +527,17 @@ export default function SearchRides() {
                         // Already booked / requested / driver → go straight to details
                         if (isBooked || isRequested || isDriver) {
                             const startCoords = item.route?.start?.location?.coordinates;
-                            const endCoords   = item.route?.end?.location?.coordinates;
+                            const endCoords = item.route?.end?.location?.coordinates;
                             router.push({
                                 pathname: "/(rider)/search/details",
                                 params: {
                                     rideId,
                                     pickupName: pickup?.name || item.route?.start?.name || "",
-                                    pickupLat:  String(pickup?.lat ?? (startCoords ? startCoords[1] : "")),
-                                    pickupLng:  String(pickup?.lng ?? (startCoords ? startCoords[0] : "")),
-                                    dropName:   drop?.name || item.route?.end?.name || "",
-                                    dropLat:    String(drop?.lat ?? (endCoords ? endCoords[1] : "")),
-                                    dropLng:    String(drop?.lng ?? (endCoords ? endCoords[0] : "")),
+                                    pickupLat: String(pickup?.lat ?? (startCoords ? startCoords[1] : "")),
+                                    pickupLng: String(pickup?.lng ?? (startCoords ? startCoords[0] : "")),
+                                    dropName: drop?.name || item.route?.end?.name || "",
+                                    dropLat: String(drop?.lat ?? (endCoords ? endCoords[1] : "")),
+                                    dropLng: String(drop?.lng ?? (endCoords ? endCoords[0] : "")),
                                     estimatedFare: String(item.estimate?.fare ?? ""),
                                     isBooked: isBooked ? "1" : "0",
                                     isRequested: isRequested ? "1" : "0",
@@ -831,103 +831,103 @@ export default function SearchRides() {
                     </View>
                 )}
 
-                    {/* ── Rides list ────────────────── */}
-                    <ScrollView contentContainerStyle={tw`px-5 pt-1 pb-24`} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bounces>
-                        {/* Header */}
-                        <View style={tw`mb-4`}>
-                            <Text style={[tw`text-lg font-bold`, { color: colors.textPrimary }]}>Available Rides</Text>
-                            <Text style={[tw`text-sm mt-0.5`, { color: colors.textMuted }]}>
-                                {searched
-                                    ? `${rides.length} ride${rides.length !== 1 ? "s" : ""} found`
-                                    : `${nearbyRides.length} driver${nearbyRides.length !== 1 ? "s" : ""} found nearby`}
-                            </Text>
+                {/* ── Rides list ────────────────── */}
+                <ScrollView contentContainerStyle={tw`px-5 pt-1 pb-24`} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bounces>
+                    {/* Header */}
+                    <View style={tw`mb-4`}>
+                        <Text style={[tw`text-lg font-bold`, { color: colors.textPrimary }]}>Available Rides</Text>
+                        <Text style={[tw`text-sm mt-0.5`, { color: colors.textMuted }]}>
+                            {searched
+                                ? `${rides.length} ride${rides.length !== 1 ? "s" : ""} found`
+                                : `${nearbyRides.length} driver${nearbyRides.length !== 1 ? "s" : ""} found nearby`}
+                        </Text>
+                    </View>
+
+                    {loading && (
+                        <View style={tw`items-center py-8`}>
+                            <ActivityIndicator size="large" color={colors.primary} />
                         </View>
+                    )}
 
-                        {loading && (
-                            <View style={tw`items-center py-8`}>
-                                <ActivityIndicator size="large" color={colors.primary} />
+                    {!loading && pinnedRides.length > 0 && (
+                        <>
+                            <View style={[tw`flex-row items-center mb-3`, { gap: 6 }]}>
+                                <MaterialCommunityIcons name="bookmark-check" size={14} color={colors.success} />
+                                <Text style={[tw`text-xs font-extrabold tracking-widest`, { color: colors.success }]}>YOUR RIDES</Text>
                             </View>
-                        )}
-
-                        {!loading && pinnedRides.length > 0 && (
-                            <>
-                                <View style={[tw`flex-row items-center mb-3`, { gap: 6 }]}>
-                                    <MaterialCommunityIcons name="bookmark-check" size={14} color={colors.success} />
-                                    <Text style={[tw`text-xs font-extrabold tracking-widest`, { color: colors.success }]}>YOUR RIDES</Text>
+                            {pinnedRides.map((r) => renderRide(r))}
+                            {otherRides.length > 0 && (
+                                <View style={[tw`flex-row items-center mb-3 mt-1`, { gap: 10, opacity: 0.45 }]}>
+                                    <View style={[tw`flex-1 h-px`, { backgroundColor: colors.border }]} />
+                                    <Text style={[tw`text-[10px] font-bold`, { color: colors.textMuted }]}>MORE RIDES</Text>
+                                    <View style={[tw`flex-1 h-px`, { backgroundColor: colors.border }]} />
                                 </View>
-                                {pinnedRides.map((r) => renderRide(r))}
-                                {otherRides.length > 0 && (
-                                    <View style={[tw`flex-row items-center mb-3 mt-1`, { gap: 10, opacity: 0.45 }]}>
-                                        <View style={[tw`flex-1 h-px`, { backgroundColor: colors.border }]} />
-                                        <Text style={[tw`text-[10px] font-bold`, { color: colors.textMuted }]}>MORE RIDES</Text>
-                                        <View style={[tw`flex-1 h-px`, { backgroundColor: colors.border }]} />
-                                    </View>
-                                )}
-                            </>
-                        )}
+                            )}
+                        </>
+                    )}
 
-                        {!loading && otherRides.map((r) => renderRide(r))}
+                    {!loading && otherRides.map((r) => renderRide(r))}
 
-                        {!loading && searched && rides.length === 0 && (
-                            <View style={tw`items-center mt-10`}>
-                                <Ionicons name="car-outline" size={48} color={colors.textMuted} />
-                                <Text style={[tw`text-base font-semibold mt-4`, { color: colors.textSecondary }]}>No rides found</Text>
-                                <Text style={[tw`text-sm mt-1 text-center`, { color: colors.textMuted }]}>Try a different date or location</Text>
+                    {!loading && searched && rides.length === 0 && (
+                        <View style={tw`items-center mt-10`}>
+                            <Ionicons name="car-outline" size={48} color={colors.textMuted} />
+                            <Text style={[tw`text-base font-semibold mt-4`, { color: colors.textSecondary }]}>No rides found</Text>
+                            <Text style={[tw`text-sm mt-1 text-center`, { color: colors.textMuted }]}>Try a different date or location</Text>
+                        </View>
+                    )}
+
+                    {!loading && !searched && (
+                        <>
+                            {locationDenied && (
+                                <View style={[tw`flex-row items-center px-3 py-2.5 rounded-xl mb-3`, { backgroundColor: "rgba(239,68,68,0.08)", borderWidth: 1, borderColor: "rgba(239,68,68,0.2)", gap: 8 }]}>
+                                    <Ionicons name="location-outline" size={16} color="#ef4444" />
+                                    <Text style={[tw`text-xs flex-1`, { color: "#ef4444" }]}>Location access denied — search manually above.</Text>
+                                </View>
+                            )}
+
+                            {/* Radius header + pills — ALWAYS visible */}
+                            <View style={[tw`flex-row items-center mb-3`, { gap: 6 }]}>
+                                <Ionicons name="location" size={14} color={colors.primary} />
+                                <Text style={[tw`text-xs font-extrabold tracking-widest`, { color: colors.primary }]}>WITHIN {nearbyRadius} KM</Text>
                             </View>
-                        )}
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`} contentContainerStyle={{ gap: 8 }}>
+                                {[25, 50, 100, 200, 500].map((km) => (
+                                    <TouchableOpacity
+                                        key={km}
+                                        onPress={() => { setNearbyRadius(km); fetchNearbyWithRadius(km); }}
+                                        style={[
+                                            tw`py-1.5 px-3 rounded-full`,
+                                            {
+                                                backgroundColor: nearbyRadius === km ? colors.primary : colors.surfaceMuted,
+                                                borderWidth: 1,
+                                                borderColor: nearbyRadius === km ? colors.primary : colors.border,
+                                            },
+                                        ]}
+                                    >
+                                        <Text style={[tw`text-xs font-bold`, { color: nearbyRadius === km ? "#fff" : colors.textSecondary }]}>
+                                            {km} km
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
 
-                        {!loading && !searched && (
-                            <>
-                                {locationDenied && (
-                                    <View style={[tw`flex-row items-center px-3 py-2.5 rounded-xl mb-3`, { backgroundColor: "rgba(239,68,68,0.08)", borderWidth: 1, borderColor: "rgba(239,68,68,0.2)", gap: 8 }]}>
-                                        <Ionicons name="location-outline" size={16} color="#ef4444" />
-                                        <Text style={[tw`text-xs flex-1`, { color: "#ef4444" }]}>Location access denied — search manually above.</Text>
-                                    </View>
-                                )}
-
-                                {/* Radius header + pills — ALWAYS visible */}
-                                <View style={[tw`flex-row items-center mb-3`, { gap: 6 }]}>
-                                    <Ionicons name="location" size={14} color={colors.primary} />
-                                    <Text style={[tw`text-xs font-extrabold tracking-widest`, { color: colors.primary }]}>WITHIN {nearbyRadius} KM</Text>
+                            {nearbyLoading && (
+                                <View style={tw`items-center py-8`}>
+                                    <ActivityIndicator size="small" color={colors.primary} />
+                                    <Text style={[tw`text-xs mt-2`, { color: colors.textMuted }]}>Finding rides near you…</Text>
                                 </View>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mb-3`} contentContainerStyle={{ gap: 8 }}>
-                                    {[25, 50, 100, 200, 500].map((km) => (
-                                        <TouchableOpacity
-                                            key={km}
-                                            onPress={() => { setNearbyRadius(km); fetchNearbyWithRadius(km); }}
-                                            style={[
-                                                tw`py-1.5 px-3 rounded-full`,
-                                                {
-                                                    backgroundColor: nearbyRadius === km ? colors.primary : colors.surfaceMuted,
-                                                    borderWidth: 1,
-                                                    borderColor: nearbyRadius === km ? colors.primary : colors.border,
-                                                },
-                                            ]}
-                                        >
-                                            <Text style={[tw`text-xs font-bold`, { color: nearbyRadius === km ? "#fff" : colors.textSecondary }]}>
-                                                {km} km
-                                            </Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
-
-                                {nearbyLoading && (
-                                    <View style={tw`items-center py-8`}>
-                                        <ActivityIndicator size="small" color={colors.primary} />
-                                        <Text style={[tw`text-xs mt-2`, { color: colors.textMuted }]}>Finding rides near you…</Text>
-                                    </View>
-                                )}
-                                {!nearbyLoading && nearbyRides.length > 0 && nearbyRides.map((r) => renderRide(r))}
-                                {!nearbyLoading && nearbyRides.length === 0 && !locationDenied && (
-                                    <View style={tw`items-center mt-6`}>
-                                        <Ionicons name="search-outline" size={48} color={colors.textMuted} />
-                                        <Text style={[tw`text-base font-semibold mt-4`, { color: colors.textSecondary }]}>No rides within {nearbyRadius} km</Text>
-                                        <Text style={[tw`text-sm mt-1 text-center`, { color: colors.textMuted }]}>Try increasing the radius or search a specific route</Text>
-                                    </View>
-                                )}
-                            </>
-                        )}
-                    </ScrollView>
+                            )}
+                            {!nearbyLoading && nearbyRides.length > 0 && nearbyRides.map((r) => renderRide(r))}
+                            {!nearbyLoading && nearbyRides.length === 0 && !locationDenied && (
+                                <View style={tw`items-center mt-6`}>
+                                    <Ionicons name="search-outline" size={48} color={colors.textMuted} />
+                                    <Text style={[tw`text-base font-semibold mt-4`, { color: colors.textSecondary }]}>No rides within {nearbyRadius} km</Text>
+                                    <Text style={[tw`text-sm mt-1 text-center`, { color: colors.textMuted }]}>Try increasing the radius or search a specific route</Text>
+                                </View>
+                            )}
+                        </>
+                    )}
+                </ScrollView>
             </Animated.View>
 
             {/* ── Expand hint FAB (only when collapsed & not expanded) ── */}

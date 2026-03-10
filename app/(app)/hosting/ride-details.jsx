@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useState } from "react";
 import { useUser } from "@clerk/clerk-expo";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import DateTimePicker from "../../../components/common/DateTimeWrapper";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import tw from "twrnc";
 import { theme } from "../../../constants/Colors";
@@ -14,12 +14,12 @@ import { theme } from "../../../constants/Colors";
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 const SEAT_TYPES = [
-    { type: "front",       label: "Front Seat",               icon: "car-outline" },
-    { type: "backWindow",  label: "Back Window Seat",         icon: "car-sport-outline" },
-    { type: "backMiddle",  label: "Back Middle Seat",         icon: "people-outline" },
-    { type: "backArmrest", label: "Back Seat w/ Armrest",     icon: "accessibility-outline" },
-    { type: "thirdRow",    label: "Third Row Seat",           icon: "bus-outline" },
-    { type: "any",         label: "Any Seat (No Preference)", icon: "grid-outline" },
+    { type: "front", label: "Front Seat", icon: "car-outline" },
+    { type: "backWindow", label: "Back Window Seat", icon: "car-sport-outline" },
+    { type: "backMiddle", label: "Back Middle Seat", icon: "people-outline" },
+    { type: "backArmrest", label: "Back Seat w/ Armrest", icon: "accessibility-outline" },
+    { type: "thirdRow", label: "Third Row Seat", icon: "bus-outline" },
+    { type: "any", label: "Any Seat (No Preference)", icon: "grid-outline" },
 ];
 
 const formatDuration = (mins) => {
@@ -67,7 +67,7 @@ export default function RideDetails() {
         front: 0, backWindow: 0, backMiddle: 0, backArmrest: 0, thirdRow: 0,
         any: vehicles[0]?.totalSeats || 4,
     }));
-    
+
     // Calculate effective total seats accounting for luggage
     const effectiveTotalSeats = luggageSpace ? Math.max(1, totalSeats - 2) : totalSeats;
     const seatTotal = Object.values(seatCounts).reduce((a, b) => a + b, 0);
@@ -162,23 +162,23 @@ export default function RideDetails() {
         <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
             {/* Header */}
             <SafeAreaView edges={["top"]} style={{ backgroundColor: colors.surface }}>
-            <View style={[tw`flex-row items-center px-4 pt-2 pb-4 border-b`, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <TouchableOpacity onPress={() => router.back()} style={tw`mr-3 p-1`}>
-                    <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-                </TouchableOpacity>
-                <View style={tw`flex-1`}>
-                    <Text style={[tw`text-lg font-bold`, { color: colors.textPrimary }]}>New Ride</Text>
-                    <Text style={[tw`text-xs`, { color: colors.textSecondary }]}>
-                        {routeData.start.name} → {routeData.end.name}
-                    </Text>
+                <View style={[tw`flex-row items-center px-4 pt-2 pb-4 border-b`, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <TouchableOpacity onPress={() => router.back()} style={tw`mr-3 p-1`}>
+                        <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+                    </TouchableOpacity>
+                    <View style={tw`flex-1`}>
+                        <Text style={[tw`text-lg font-bold`, { color: colors.textPrimary }]}>New Ride</Text>
+                        <Text style={[tw`text-xs`, { color: colors.textSecondary }]}>
+                            {routeData.start.name} → {routeData.end.name}
+                        </Text>
+                    </View>
+                    {/* Distance / Duration pill */}
+                    <View style={[tw`px-3 py-1.5 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                        <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>
+                            {routeData.metrics.totalDistanceKm.toFixed(1)} km · {formatDuration(routeData.metrics.durationMinutes)}
+                        </Text>
+                    </View>
                 </View>
-                {/* Distance / Duration pill */}
-                <View style={[tw`px-3 py-1.5 rounded-full`, { backgroundColor: colors.primarySoft }]}>
-                    <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>
-                        {routeData.metrics.totalDistanceKm.toFixed(1)} km · {formatDuration(routeData.metrics.durationMinutes)}
-                    </Text>
-                </View>
-            </View>
             </SafeAreaView>
 
             <ScrollView contentContainerStyle={tw`p-4 pb-12`} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -237,8 +237,8 @@ export default function RideDetails() {
                             return (
                                 <TouchableOpacity key={p.label} onPress={() => { setExtraHours(p.h); setExtraMins(p.m); }}
                                     style={[tw`flex-1 py-2 rounded-lg border items-center mt-3`,
-                                        active ? { backgroundColor: colors.primary, borderColor: colors.primary }
-                                               : { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                    active ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                                        : { backgroundColor: colors.surface, borderColor: colors.border }]}>
                                     <Text style={[tw`text-xs font-bold`, { color: active ? 'white' : colors.textSecondary }]}>{p.label}</Text>
                                 </TouchableOpacity>
                             );
@@ -286,7 +286,7 @@ export default function RideDetails() {
                                         }
                                     }}
                                     style={[tw`mr-3 rounded-xl border-2 overflow-hidden`,
-                                        { width: 160, borderColor: selectedVehicleIdx === idx ? colors.primary : colors.border }]}>
+                                    { width: 160, borderColor: selectedVehicleIdx === idx ? colors.primary : colors.border }]}>
                                     {v.images?.[0] ? (
                                         <Image source={{ uri: v.images[0] }} style={{ width: 160, height: 90 }} resizeMode="cover" />
                                     ) : (
@@ -359,7 +359,7 @@ export default function RideDetails() {
                                             }}
                                             disabled={totalSeats >= vehicleCapacity}
                                             style={[tw`w-8 h-8 rounded-full items-center justify-center`,
-                                                { backgroundColor: totalSeats >= vehicleCapacity ? colors.surfaceMuted : colors.primary }]}>
+                                            { backgroundColor: totalSeats >= vehicleCapacity ? colors.surfaceMuted : colors.primary }]}>
                                             <Ionicons name="add" size={18} color={totalSeats >= vehicleCapacity ? colors.textMuted : 'white'} />
                                         </TouchableOpacity>
                                     </View>
@@ -387,7 +387,7 @@ export default function RideDetails() {
                                     onPress={() => setSeatCounts(prev => ({ ...prev, [seat.type]: Math.max(0, prev[seat.type] - 1) }))}
                                     disabled={seatCounts[seat.type] === 0}
                                     style={[tw`w-7 h-7 rounded-full items-center justify-center`,
-                                        { backgroundColor: seatCounts[seat.type] === 0 ? colors.surfaceMuted : colors.border }]}>
+                                    { backgroundColor: seatCounts[seat.type] === 0 ? colors.surfaceMuted : colors.border }]}>
                                     <Ionicons name="remove" size={15} color={seatCounts[seat.type] === 0 ? colors.textMuted : colors.textPrimary} />
                                 </TouchableOpacity>
                                 <Text style={[tw`text-sm font-semibold w-5 text-center`, { color: colors.textPrimary }]}>{seatCounts[seat.type]}</Text>
@@ -395,7 +395,7 @@ export default function RideDetails() {
                                     onPress={() => { if (seatTotal < effectiveTotalSeats) setSeatCounts(prev => ({ ...prev, [seat.type]: prev[seat.type] + 1 })); }}
                                     disabled={seatTotal >= effectiveTotalSeats}
                                     style={[tw`w-7 h-7 rounded-full items-center justify-center`,
-                                        { backgroundColor: seatTotal >= effectiveTotalSeats ? colors.surfaceMuted : colors.primary }]}>
+                                    { backgroundColor: seatTotal >= effectiveTotalSeats ? colors.surfaceMuted : colors.primary }]}>
                                     <Ionicons name="add" size={15} color={seatTotal >= effectiveTotalSeats ? colors.textMuted : 'white'} />
                                 </TouchableOpacity>
                             </View>
@@ -470,10 +470,10 @@ export default function RideDetails() {
                     {[
                         { label: "Pets Allowed", icon: "paw-outline", value: petsAllowed, setter: setPetsAllowed },
                         { label: "No Smoking", icon: "ban-outline", value: smokingAllowed, setter: setSmokingAllowed },
-                        { 
-                            label: "Luggage Space", 
-                            icon: "briefcase-outline", 
-                            value: luggageSpace, 
+                        {
+                            label: "Luggage Space",
+                            icon: "briefcase-outline",
+                            value: luggageSpace,
                             setter: (val) => {
                                 setLuggageSpace(val);
                                 if (val && seatTotal > Math.max(1, totalSeats - 2)) {
@@ -496,7 +496,7 @@ export default function RideDetails() {
                     ].map((item, idx) => (
                         <TouchableOpacity key={idx} activeOpacity={0.8} onPress={() => item.setter(typeof item.setter === 'function' ? !item.value : !item.value)}
                             style={[tw`flex-row items-center px-4 py-2 rounded-full`,
-                                { backgroundColor: item.value ? colors.primary : colors.surfaceMuted }]}>
+                            { backgroundColor: item.value ? colors.primary : colors.surfaceMuted }]}>
                             <Ionicons name={item.icon} size={16} color={item.value ? "white" : colors.textSecondary} style={tw`mr-2`} />
                             <Text style={[tw`text-sm font-medium`, { color: item.value ? "white" : colors.textSecondary }]}>{item.label}</Text>
                         </TouchableOpacity>
@@ -519,8 +519,8 @@ export default function RideDetails() {
                     onPress={handlePublish}
                     disabled={isPublishing || !canPublish}
                     style={[tw`py-4 rounded-xl items-center`,
-                        canPublish ? { backgroundColor: colors.primary } : { backgroundColor: colors.surfaceMuted },
-                        isPublishing && tw`opacity-70`]}>
+                    canPublish ? { backgroundColor: colors.primary } : { backgroundColor: colors.surfaceMuted },
+                    isPublishing && tw`opacity-70`]}>
                     {isPublishing
                         ? <ActivityIndicator color="white" />
                         : <Text style={[tw`font-bold text-lg`, { color: canPublish ? 'white' : colors.textMuted }]}>Publish Ride</Text>}
