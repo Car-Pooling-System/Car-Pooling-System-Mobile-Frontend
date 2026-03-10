@@ -81,16 +81,18 @@ export default function RideDetails() {
     const [changingSeat, setChangingSeat] = useState(null);
 
     /* ── Chat helpers ── */
-    const openDMChat = async (passenger) => {
+    const openDMChat = async (targetUser, targetRole) => {
         try {
-            console.log("[Chat] openDMChat →", passenger.name, passenger.userId);
+            const myRole = role === "driver" ? "driver" : "rider";
+            const otherRole = targetRole || (myRole === "driver" ? "rider" : "driver");
+            console.log(`[Chat] openDMChat → ${targetUser.name} (${otherRole}), I am ${myRole}`);
             const res = await fetch(`${BACKEND_URL}/api/chat/conversations/direct`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     participants: [
-                        { userId: user.id, name: user.fullName || "Driver", profileImage: user.imageUrl, role: "driver" },
-                        { userId: passenger.userId, name: passenger.name, profileImage: passenger.profileImage, role: "rider" },
+                        { userId: user.id, name: user.fullName || myRole, profileImage: user.imageUrl, role: myRole },
+                        { userId: targetUser.userId, name: targetUser.name, profileImage: targetUser.profileImage, role: otherRole },
                     ],
                 }),
             });
@@ -98,12 +100,13 @@ export default function RideDetails() {
             console.log("[Chat] DM response:", JSON.stringify(data).slice(0, 200));
             if (!res.ok) throw new Error(data.message);
             const convo = data.conversation || data;
+            const chatPath = role === "rider" ? "/(rider)/chat/room" : "/(app)/chat/room";
             router.push({
-                pathname: "/(app)/chat/room",
+                pathname: chatPath,
                 params: {
                     conversationId: convo._id,
-                    title: passenger.name,
-                    image: passenger.profileImage || "",
+                    title: targetUser.name,
+                    image: targetUser.profileImage || "",
                     type: "direct",
                 },
             });
@@ -118,14 +121,15 @@ export default function RideDetails() {
             const res = await fetch(`${BACKEND_URL}/api/chat/conversations/group`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ rideId: ride._id }),
+                body: JSON.stringify({ rideId: ride._id, userId: user.id }),
             });
             const data = await res.json();
             console.log("[Chat] Group response:", JSON.stringify(data).slice(0, 200));
             if (!res.ok) throw new Error(data.message);
             const convo = data.conversation || data;
+            const chatPath = role === "rider" ? "/(rider)/chat/room" : "/(app)/chat/room";
             router.push({
-                pathname: "/(app)/chat/room",
+                pathname: chatPath,
                 params: {
                     conversationId: convo._id,
                     title: convo.title || "Group Chat",
@@ -555,6 +559,7 @@ export default function RideDetails() {
 
                     {/* Driver/Rider Info Section */}
                     {role === "rider" ? (
+                        <>
                         <TouchableOpacity
                             activeOpacity={0.85}
                             onPress={() => {
@@ -698,6 +703,45 @@ export default function RideDetails() {
                                 </View>
                             )}
                         </TouchableOpacity>
+
+                        {/* ── Rider Chat Section ── */}
+                        <View style={[tw`bg-white rounded-2xl p-5 mb-6 shadow-sm border`, { borderColor: colors.border }]}>
+                            <View style={tw`flex-row items-center gap-2 mb-4`}>
+                                <Ionicons name="chatbubbles" size={18} color={colors.primary} />
+                                <Text style={[tw`text-sm font-bold`, { color: colors.textSecondary }]}>CHAT</Text>
+                            </View>
+
+                            {/* Chat with Driver */}
+                            <TouchableOpacity
+                                onPress={() => openDMChat({ userId: driver.userId, name: driver.name, profileImage: driver.profileImage }, "driver")}
+                                style={[tw`flex-row items-center gap-3 p-3 rounded-xl mb-3 border`, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
+                            >
+                                {driver.profileImage ? (
+                                    <Image source={{ uri: driver.profileImage }} style={tw`w-10 h-10 rounded-full`} />
+                                ) : (
+                                    <View style={[tw`w-10 h-10 rounded-full items-center justify-center`, { backgroundColor: colors.primarySoft }]}>
+                                        <Ionicons name="person" size={18} color={colors.primary} />
+                                    </View>
+                                )}
+                                <View style={tw`flex-1`}>
+                                    <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{driver.name}</Text>
+                                    <Text style={[tw`text-xs`, { color: colors.textMuted }]}>Message the driver</Text>
+                                </View>
+                                <View style={[tw`p-2 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                    <Ionicons name="chatbubble" size={16} color={colors.primary} />
+                                </View>
+                            </TouchableOpacity>
+
+                            {/* Group Chat */}
+                            <TouchableOpacity
+                                onPress={openGroupChat}
+                                style={[tw`flex-row items-center justify-center gap-2 py-3 rounded-xl`, { backgroundColor: colors.primary }]}
+                            >
+                                <Ionicons name="chatbubbles" size={18} color="white" />
+                                <Text style={tw`text-white font-bold text-sm`}>Group Chat</Text>
+                            </TouchableOpacity>
+                        </View>
+                        </>
                     ) : (
                         <View>
                             {/* Your Vehicle — driver view */}
@@ -905,7 +949,7 @@ export default function RideDetails() {
                                                 )}
                                             </View>
                                         </View>
-                                        <TouchableOpacity onPress={() => openDMChat(passenger)} style={[tw`p-2 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                        <TouchableOpacity onPress={() => openDMChat(passenger, "rider")} style={[tw`p-2 rounded-full`, { backgroundColor: colors.primarySoft }]}>
                                             <Ionicons name="chatbubble" size={16} color={colors.primary} />
                                         </TouchableOpacity>
                                     </View>

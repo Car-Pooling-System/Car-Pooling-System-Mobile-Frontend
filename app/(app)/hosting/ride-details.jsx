@@ -67,6 +67,9 @@ export default function RideDetails() {
         front: 0, backWindow: 0, backMiddle: 0, backArmrest: 0, thirdRow: 0,
         any: vehicles[0]?.totalSeats || 4,
     }));
+    
+    // Calculate effective total seats accounting for luggage
+    const effectiveTotalSeats = luggageSpace ? Math.max(1, totalSeats - 2) : totalSeats;
     const seatTotal = Object.values(seatCounts).reduce((a, b) => a + b, 0);
 
     const [extraHours, setExtraHours] = useState(0);
@@ -98,8 +101,8 @@ export default function RideDetails() {
                 schedule: { departureTime: date.toISOString(), extraTimeMinutes },
                 pricing: { baseFare: finalFare },
                 seats: {
-                    total: totalSeats,
-                    available: totalSeats,
+                    total: effectiveTotalSeats,
+                    available: effectiveTotalSeats,
                     seatTypes: SEAT_TYPES
                         .filter(s => seatCounts[s.type] > 0)
                         .map(s => ({ type: s.type, label: s.label, count: seatCounts[s.type] })),
@@ -321,6 +324,7 @@ export default function RideDetails() {
                                         <Text style={[tw`font-semibold`, { color: colors.textPrimary }]}>Total Seats Offered</Text>
                                         <Text style={[tw`text-xs`, { color: colors.textMuted }]}>
                                             {selectedVehicle ? `Max ${vehicleCapacity} · ${selectedVehicle.brand} ${selectedVehicle.model}` : 'How many passengers can join?'}
+                                            {luggageSpace && ' · 2 seats reserved for luggage'}
                                         </Text>
                                     </View>
                                     <View style={tw`flex-row items-center gap-3`}>
@@ -348,7 +352,9 @@ export default function RideDetails() {
                                             onPress={() => {
                                                 if (totalSeats < vehicleCapacity) {
                                                     setTotalSeats(t => t + 1);
-                                                    setSeatCounts(prev => ({ ...prev, any: prev.any + 1 }));
+                                                    if (!luggageSpace || totalSeats + 1 > 2) {
+                                                        setSeatCounts(prev => ({ ...prev, any: prev.any + 1 }));
+                                                    }
                                                 }
                                             }}
                                             disabled={totalSeats >= vehicleCapacity}
@@ -360,6 +366,11 @@ export default function RideDetails() {
                                 </View>
                                 {totalSeats >= vehicleCapacity && (
                                     <Text style={[tw`text-xs mt-1`, { color: '#d97706' }]}>⚠ At vehicle capacity ({vehicleCapacity} seats)</Text>
+                                )}
+                                {luggageSpace && (
+                                    <Text style={[tw`text-xs mt-1`, { color: colors.primary }]}>
+                                        ℹ️ 2 seats reserved for luggage. Available for passengers: {effectiveTotalSeats}
+                                    </Text>
                                 )}
                             </View>
                         );
@@ -381,22 +392,22 @@ export default function RideDetails() {
                                 </TouchableOpacity>
                                 <Text style={[tw`text-sm font-semibold w-5 text-center`, { color: colors.textPrimary }]}>{seatCounts[seat.type]}</Text>
                                 <TouchableOpacity
-                                    onPress={() => { if (seatTotal < totalSeats) setSeatCounts(prev => ({ ...prev, [seat.type]: prev[seat.type] + 1 })); }}
-                                    disabled={seatTotal >= totalSeats}
+                                    onPress={() => { if (seatTotal < effectiveTotalSeats) setSeatCounts(prev => ({ ...prev, [seat.type]: prev[seat.type] + 1 })); }}
+                                    disabled={seatTotal >= effectiveTotalSeats}
                                     style={[tw`w-7 h-7 rounded-full items-center justify-center`,
-                                        { backgroundColor: seatTotal >= totalSeats ? colors.surfaceMuted : colors.primary }]}>
-                                    <Ionicons name="add" size={15} color={seatTotal >= totalSeats ? colors.textMuted : 'white'} />
+                                        { backgroundColor: seatTotal >= effectiveTotalSeats ? colors.surfaceMuted : colors.primary }]}>
+                                    <Ionicons name="add" size={15} color={seatTotal >= effectiveTotalSeats ? colors.textMuted : 'white'} />
                                 </TouchableOpacity>
                             </View>
                         </View>
                     ))}
 
                     <View style={[tw`mt-3 pt-3 border-t flex-row justify-between items-center`, { borderColor: colors.border }]}>
-                        <Text style={[tw`text-xs`, { color: colors.textSecondary }]}>Allocated: {seatTotal} / {totalSeats}</Text>
-                        {seatTotal < totalSeats && (
-                            <Text style={[tw`text-xs font-medium`, { color: '#d97706' }]}>{totalSeats - seatTotal} seat{totalSeats - seatTotal > 1 ? 's' : ''} unassigned</Text>
+                        <Text style={[tw`text-xs`, { color: colors.textSecondary }]}>Allocated: {seatTotal} / {effectiveTotalSeats}</Text>
+                        {seatTotal < effectiveTotalSeats && (
+                            <Text style={[tw`text-xs font-medium`, { color: '#d97706' }]}>{effectiveTotalSeats - seatTotal} seat{effectiveTotalSeats - seatTotal > 1 ? 's' : ''} unassigned</Text>
                         )}
-                        {seatTotal === totalSeats && (
+                        {seatTotal === effectiveTotalSeats && (
                             <Text style={[tw`text-xs font-medium`, { color: colors.success }]}>✓ All seats assigned</Text>
                         )}
                     </View>
@@ -459,9 +470,31 @@ export default function RideDetails() {
                     {[
                         { label: "Pets Allowed", icon: "paw-outline", value: petsAllowed, setter: setPetsAllowed },
                         { label: "No Smoking", icon: "ban-outline", value: smokingAllowed, setter: setSmokingAllowed },
-                        { label: "Luggage Space", icon: "briefcase-outline", value: luggageSpace, setter: setLuggageSpace },
+                        { 
+                            label: "Luggage Space", 
+                            icon: "briefcase-outline", 
+                            value: luggageSpace, 
+                            setter: (val) => {
+                                setLuggageSpace(val);
+                                if (val && seatTotal > Math.max(1, totalSeats - 2)) {
+                                    // Adjust seat counts if enabling luggage would exceed available seats
+                                    const newMax = Math.max(1, totalSeats - 2);
+                                    setSeatCounts(prev => {
+                                        const updated = { ...prev };
+                                        let excess = Object.values(updated).reduce((a, b) => a + b, 0) - newMax;
+                                        for (const k of Object.keys(updated).reverse()) {
+                                            if (excess <= 0) break;
+                                            const cut = Math.min(updated[k], excess);
+                                            updated[k] -= cut;
+                                            excess -= cut;
+                                        }
+                                        return updated;
+                                    });
+                                }
+                            }
+                        },
                     ].map((item, idx) => (
-                        <TouchableOpacity key={idx} activeOpacity={0.8} onPress={() => item.setter(!item.value)}
+                        <TouchableOpacity key={idx} activeOpacity={0.8} onPress={() => item.setter(typeof item.setter === 'function' ? !item.value : !item.value)}
                             style={[tw`flex-row items-center px-4 py-2 rounded-full`,
                                 { backgroundColor: item.value ? colors.primary : colors.surfaceMuted }]}>
                             <Ionicons name={item.icon} size={16} color={item.value ? "white" : colors.textSecondary} style={tw`mr-2`} />

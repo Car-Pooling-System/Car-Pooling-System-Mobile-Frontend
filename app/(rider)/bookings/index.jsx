@@ -17,11 +17,12 @@ export default function Bookings() {
     const [rides, setRides] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [filter, setFilter] = useState("latest");
 
     const fetchBookings = useCallback(async () => {
         if (!user?.id) return;
         try {
-            const res = await fetch(`${BACKEND_URL}/api/rider/rider-rides/${user.id}`);
+            const res = await fetch(`${BACKEND_URL}/api/rider/rider-rides/${user.id}?filter=${filter}`);
             const data = await res.json();
             setRides(Array.isArray(data) ? data : []);
         } catch (e) {
@@ -30,7 +31,7 @@ export default function Bookings() {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [user?.id]);
+    }, [user?.id, filter]);
 
     useEffect(() => { fetchBookings(); }, [fetchBookings]);
 
@@ -108,6 +109,27 @@ export default function Bookings() {
         <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
             <View style={[tw`pt-2 pb-4 px-6`, { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                 <Text style={[tw`text-2xl font-extrabold`, { color: colors.textPrimary }]}>My Bookings</Text>
+                <View style={tw`flex-row gap-2 mt-3`}>
+                    {[
+                        { value: "latest", label: "Latest" },
+                        { value: "upcoming", label: "Upcoming" },
+                        { value: "done", label: "Done" },
+                        { value: "oldest", label: "Oldest" },
+                    ].map(({ value, label }) => (
+                        <TouchableOpacity
+                            key={value}
+                            onPress={() => setFilter(value)}
+                            style={[
+                                tw`px-3 py-1.5 rounded-full`,
+                                { backgroundColor: filter === value ? colors.primary : colors.surfaceMuted }
+                            ]}
+                        >
+                            <Text style={[tw`text-xs font-bold`, { color: filter === value ? "white" : colors.textSecondary }]}>
+                                {label}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
             </View>
 
             {loading ? (
