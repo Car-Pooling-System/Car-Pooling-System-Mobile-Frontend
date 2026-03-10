@@ -228,11 +228,15 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps || npm install
 
-      - name: Notify production deployment
-        run: |
-          echo "### 🌟 Production Release" >> $GITHUB_STEP_SUMMARY
-          echo "Deploying to Production environment." >> $GITHUB_STEP_SUMMARY
-          echo "To build production binary, run locally:" >> $GITHUB_STEP_SUMMARY
-          echo "\`eas build --platform all --profile production\`" >> $GITHUB_STEP_SUMMARY
+      - name: Build Web App
+        run: npm run build:web
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_SWIFTLY_20535 }}"
+          projectId: swiftly-20535
+          channelId: live
