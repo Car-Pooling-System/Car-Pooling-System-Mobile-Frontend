@@ -17,11 +17,12 @@ export default function Bookings() {
     const [rides, setRides] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [filter, setFilter] = useState("latest");
 
     const fetchBookings = useCallback(async () => {
         if (!user?.id) return;
         try {
-            const res = await fetch(`${BACKEND_URL}/api/rider/rider-rides/${user.id}`);
+            const res = await fetch(`${BACKEND_URL}/api/rider/rider-rides/${user.id}?filter=${filter}`);
             const data = await res.json();
             setRides(Array.isArray(data) ? data : []);
         } catch (e) {
@@ -30,7 +31,7 @@ export default function Bookings() {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [user?.id]);
+    }, [user?.id, filter]);
 
     useEffect(() => { fetchBookings(); }, [fetchBookings]);
 
@@ -40,14 +41,25 @@ export default function Bookings() {
         const ride = item.ride || item;
         const dep = new Date(ride.schedule?.departureTime);
         const isPast = dep < new Date() || ride.status === "completed" || ride.status === "cancelled";
+        const isOngoing = ride.status === "ongoing";
 
         return (
             <TouchableOpacity
-                onPress={() => router.push({ pathname: "/my-rides/details", params: { rideId: ride._id, role: "rider" } })}
+                onPress={() => {
+                    if (isOngoing) {
+                        router.push({ pathname: "/(rider)/bookings/live-ride", params: { rideId: ride._id, role: "rider" } });
+                    } else {
+                        router.push({ pathname: "/my-rides/details", params: { rideId: ride._id, role: "rider" } });
+                    }
+                }}
                 activeOpacity={0.85}
                 style={[
                     tw`rounded-2xl p-4 mb-4`,
-                    { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+                    {
+                        backgroundColor: colors.surface,
+                        borderWidth: isOngoing ? 2 : 1,
+                        borderColor: isOngoing ? "#059669" : colors.border,
+                    },
                 ]}
             >
                 <View style={tw`flex-row justify-between items-start mb-3`}>
@@ -100,14 +112,48 @@ export default function Bookings() {
                         <Text style={[tw`text-xs font-bold`, { color: colors.success }]}>Confirmed</Text>
                     </View>
                 )}
+                {/* Active / Ongoing ride badge */}
+                {isOngoing && (
+                    <View style={tw`mt-3 flex-row items-center justify-between`}>
+                        <View style={[tw`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full`, { backgroundColor: "#ecfdf5" }]}>
+                            <View style={[tw`w-2 h-2 rounded-full`, { backgroundColor: "#059669" }]} />
+                            <Text style={[tw`text-xs font-bold`, { color: "#059669" }]}>Active Ride</Text>
+                        </View>
+                        <View style={[tw`flex-row items-center gap-1 px-3 py-1.5 rounded-full`, { backgroundColor: "#059669" }]}>
+                            <Ionicons name="location" size={12} color="white" />
+                            <Text style={tw`text-xs font-bold text-white`}>Track Live</Text>
+                        </View>
+                    </View>
+                )}
             </TouchableOpacity>
         );
     };
 
     return (
         <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
-            <View style={[tw`pt-12 pb-4 px-6`, { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+            <View style={[tw`pt-2 pb-4 px-6`, { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                 <Text style={[tw`text-2xl font-extrabold`, { color: colors.textPrimary }]}>My Bookings</Text>
+                <View style={tw`flex-row gap-2 mt-3`}>
+                    {[
+                        { value: "latest", label: "Latest" },
+                        { value: "upcoming", label: "Upcoming" },
+                        { value: "done", label: "Done" },
+                        { value: "oldest", label: "Oldest" },
+                    ].map(({ value, label }) => (
+                        <TouchableOpacity
+                            key={value}
+                            onPress={() => setFilter(value)}
+                            style={[
+                                tw`px-3 py-1.5 rounded-full`,
+                                { backgroundColor: filter === value ? colors.primary : colors.surfaceMuted }
+                            ]}
+                        >
+                            <Text style={[tw`text-xs font-bold`, { color: filter === value ? "white" : colors.textSecondary }]}>
+                                {label}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
             </View>
 
             {loading ? (

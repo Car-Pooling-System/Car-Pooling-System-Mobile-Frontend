@@ -1,6 +1,6 @@
 import {
     View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator,
-    useColorScheme, Alert, StyleSheet, Dimensions, Platform,
+    useColorScheme, Alert, StyleSheet, Dimensions, Platform, TextInput, Modal,
 } from "react-native";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -24,6 +24,7 @@ export default function RideSearchDetails() {
         isBooked: isBookedParam,
         isRequested: isRequestedParam,
         isDriver: isDriverParam,
+        seatsRequested: seatsRequestedParam,
     } = params;
 
     const router = useRouter();
@@ -31,16 +32,116 @@ export default function RideSearchDetails() {
     const scheme = useColorScheme();
     const colors = theme[scheme ?? "light"];
 
+    const totalSeatsWanted = Math.max(1, parseInt(seatsRequestedParam) || 1);
+
     const [ride, setRide] = useState(null);
     const [loading, setLoading] = useState(true);
     const [booking, setBooking] = useState(false);
     const [booked, setBooked] = useState(isBookedParam === "1");
     const [requested, setRequested] = useState(isRequestedParam === "1");
     const [scrollEnabled, setScrollEnabled] = useState(true);
-    const [selectedSeat, setSelectedSeat] = useState("any");
-    const [showSeatOptions, setShowSeatOptions] = useState(false);
+    // Multi-passenger booking state
+    const [showBookingForm, setShowBookingForm] = useState(false);
+    const [bookingStep, setBookingStep] = useState(1); // 1 = rider details, 2 = seat assignment
+    const [riderIsPartOfRide, setRiderIsPartOfRide] = useState(true);
+    const [additionalPassengers, setAdditionalPassengers] = useState([]);
+    const [seatSelections, setSeatSelections] = useState({}); // { "self": seatType, 0: seatType, 1: seatType }
+
+    const SEAT_TYPES_LIST = [
+        { type: "front",       label: "Front Seat" },
+        { type: "backWindow",  label: "Back Window Seat" },
+        { type: "backMiddle",  label: "Back Middle Seat" },
+        { type: "backArmrest", label: "Back Seat w/ Armrest" },
+        { type: "thirdRow",    label: "Third Row Seat" },
+        { type: "any",         label: "Any Seat" },
+    ];
+
+    /** Compute remaining seats per type, excluding one rider's own selection */
+    const computeAvailableSeats = (excludeKey) => {
+        const remaining = {};
+        (ride?.seats?.seatTypes || []).forEach(st => {
+            if (st.count > 0) remaining[st.type] = st.count;
+        });
+        // Subtract already confirmed/requested passengers on the ride
+        (ride?.passengers || []).forEach(p => {
+            if ((p.status === 'confirmed' || p.status === 'requested') && p.seatType && p.seatType !== 'any') {
+                if (remaining[p.seatType] !== undefined) {
+                    remaining[p.seatType] = Math.max(0, remaining[p.seatType] - 1);
+                }
+            }
+        });
+        // Subtract other riders' picks in this booking
+        Object.entries(seatSelections).forEach(([key, type]) => {
+            if (String(key) !== String(excludeKey) && type && type !== 'any') {
+                if (remaining[type] !== undefined) {
+                    remaining[type] = Math.max(0, remaining[type] - 1);
+                }
+            }
+        });
+        return remaining;
+    };
 
     const isDriver = isDriverParam === "1";
+
+    /* ── Chat helpers ── */
+    const openDriverChat = async () => {
+        const driverData = ride?.driver;
+        if (!driverData) return;
+        try {
+            console.log("[Chat] openDriverChat →", driverData.name, driverData.userId);
+            const res = await fetch(`${BACKEND_URL}/api/chat/conversations/direct`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    participants: [
+                        { userId: user.id, name: user.fullName || "Rider", profileImage: user.imageUrl, role: "rider" },
+                        { userId: driverData.userId, name: driverData.name, profileImage: driverData.profileImage, role: "driver" },
+                    ],
+                }),
+            });
+            const data = await res.json();
+            console.log("[Chat] DM response:", JSON.stringify(data).slice(0, 200));
+            if (!res.ok) throw new Error(data.message);
+            const convo = data.conversation || data;
+            router.push({
+                pathname: "/(rider)/chat/room",
+                params: {
+                    conversationId: convo._id,
+                    title: driverData.name || "Driver",
+                    image: driverData.profileImage || "",
+                    type: "direct",
+                },
+            });
+        } catch (e) {
+            Alert.alert("Error", e.message || "Could not open chat");
+        }
+    };
+
+    const openGroupChat = async () => {
+        try {
+            console.log("[Chat] openGroupChat → ride", rideId);
+            const res = await fetch(`${BACKEND_URL}/api/chat/conversations/group`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ rideId }),
+            });
+            const data = await res.json();
+            console.log("[Chat] Group response:", JSON.stringify(data).slice(0, 200));
+            if (!res.ok) throw new Error(data.message);
+            const convo = data.conversation || data;
+            router.push({
+                pathname: "/(rider)/chat/room",
+                params: {
+                    conversationId: convo._id,
+                    title: convo.title || "Group Chat",
+                    image: "",
+                    type: "group",
+                },
+            });
+        } catch (e) {
+            Alert.alert("Error", e.message || "Could not open group chat");
+        }
+    };
 
     /* ── Fetch ride details ────────────────────── */
     const fetchRide = useCallback(async () => {
@@ -93,9 +194,57 @@ export default function RideSearchDetails() {
         return { latitude: 17.385, longitude: 78.4867, latitudeDelta: 0.2, longitudeDelta: 0.2 };
     }, [routePoints]);
 
-    /* ── Request ride ─────────────────────────────── */
+    /* ── Open booking form ─────────────────────────── */
+    const openBookingForm = () => {
+        const extraSeats = riderIsPartOfRide ? totalSeatsWanted - 1 : totalSeatsWanted;
+        const initialPassengers = Array.from({ length: Math.max(0, extraSeats) }, () => ({
+            name: "",
+            age: "",
+            sex: "",
+            email: "",
+        }));
+        setAdditionalPassengers(initialPassengers);
+        setSeatSelections({});
+        setBookingStep(1);
+        setShowBookingForm(true);
+    };
+
+    const updateGuest = (index, field, value) => {
+        setAdditionalPassengers((prev) => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], [field]: value };
+            return updated;
+        });
+    };
+
+    const addGuestSlot = () => {
+        setAdditionalPassengers((prev) => [
+            ...prev,
+            { name: "", age: "", sex: "", email: "" },
+        ]);
+    };
+
+    const removeGuestSlot = (index) => {
+        setAdditionalPassengers((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    /* ── Request ride (multi-passenger aware) ──────── */
     const handleRequest = async () => {
         if (booking || booked || requested || isDriver) return;
+
+        // Validate guests
+        for (let i = 0; i < additionalPassengers.length; i++) {
+            const g = additionalPassengers[i];
+            if (!g.name.trim()) {
+                Alert.alert("Missing info", `Please enter a name for Rider ${i + 1}.`);
+                return;
+            }
+            if (!g.email.trim()) {
+                Alert.alert("Missing info", `Please enter an email for ${g.name || `Rider ${i + 1}`}.`);
+                return;
+            }
+        }
+
         setBooking(true);
         try {
             const res = await fetch(`${BACKEND_URL}/api/rides/${rideId}/book`, {
@@ -112,15 +261,24 @@ export default function RideSearchDetails() {
                     },
                     pickup: { lat: parseFloat(pickupLat), lng: parseFloat(pickupLng) },
                     drop:   { lat: parseFloat(dropLat),   lng: parseFloat(dropLng) },
-                    seatPreference: selectedSeat,
+                    seatPreference: riderIsPartOfRide ? (seatSelections["self"] || "any") : "any",
+                    riderIsPartOfRide,
+                    additionalPassengers: additionalPassengers.map((g, idx) => ({
+                        name: g.name.trim(),
+                        age: g.age ? parseInt(g.age) : null,
+                        sex: g.sex || "",
+                        email: g.email.trim(),
+                        seatPreference: seatSelections[idx] || "any",
+                    })),
                 }),
             });
             const data = await res.json();
             if (res.ok) {
                 setRequested(true);
+                setShowBookingForm(false);
                 Alert.alert(
                     "Ride Requested! 🙌",
-                    `Your request has been sent to the driver. Estimated fare: ₹${data.farePaid || estimatedFare}. You'll be confirmed once the driver approves.`,
+                    `Your request for ${data.seatsBooked || 1} seat(s) has been sent to the driver. Total fare: ₹${data.totalFare || data.farePaid || estimatedFare}. You'll be confirmed once the driver approves.`,
                     [{ text: "OK" }]
                 );
             } else {
@@ -539,6 +697,34 @@ export default function RideSearchDetails() {
                         </View>
                     </TouchableOpacity>
 
+                    {/* ── Chat buttons ──────────────── */}
+                    {(booked || requested) && !isDriver && (
+                        <View style={tw`flex-row gap-3 mt-4`}>
+                            <TouchableOpacity
+                                onPress={openDriverChat}
+                                style={[
+                                    tw`flex-1 flex-row items-center justify-center gap-2 py-3 rounded-xl`,
+                                    { backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary },
+                                ]}
+                            >
+                                <Ionicons name="chatbubble" size={16} color={colors.primary} />
+                                <Text style={[tw`font-bold text-sm`, { color: colors.primary }]}>Message Driver</Text>
+                            </TouchableOpacity>
+                            {booked && (
+                                <TouchableOpacity
+                                    onPress={openGroupChat}
+                                    style={[
+                                        tw`flex-1 flex-row items-center justify-center gap-2 py-3 rounded-xl`,
+                                        { backgroundColor: colors.primary },
+                                    ]}
+                                >
+                                    <Ionicons name="chatbubbles" size={16} color="white" />
+                                    <Text style={tw`text-white font-bold text-sm`}>Group Chat</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    )}
+
                     {/* ── Vehicle card ─────────────── */}
                     {(vehicle.brand || vehicle.model) && (
                         <View
@@ -714,86 +900,412 @@ export default function RideSearchDetails() {
                         </View>
                     )}
 
-                    {/* ── Seat Preference Picker ── */}
-                    {!booked && !requested && !isDriver && ride.seats?.seatTypes?.length > 0 && (
-                        <View
-                            style={[
-                                tw`mt-4 rounded-2xl overflow-hidden`,
-                                { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-                            ]}
-                        >
-                            <View
-                                style={[
-                                    tw`px-5 pt-4 pb-3 flex-row items-center justify-between`,
-                                    { borderBottomWidth: 1, borderBottomColor: colors.border },
-                                ]}
-                            >
-                                <Text
-                                    style={[tw`text-xs font-extrabold tracking-widest`, { color: colors.textSecondary }]}
-                                >
-                                    CHOOSE YOUR SEAT
-                                </Text>
-                                <View style={[tw`px-2.5 py-0.5 rounded-full`, { backgroundColor: colors.primarySoft }]}>
-                                    <Text style={[tw`text-[10px] font-bold`, { color: colors.primary }]}>
-                                        {ride.seats?.available} available
-                                    </Text>
-                                </View>
-                            </View>
-                            <View style={tw`px-4 py-3 gap-2`}>
-                                {(ride.seats?.seatTypes || []).filter(st => st.count > 0).map((st) => {
-                                    const isSelected = selectedSeat === st.type;
-                                    const seatIcons = {
-                                        front: "car-seat",
-                                        backWindow: "car-door",
-                                        backMiddle: "seat-passenger",
-                                        backArmrest: "seat-recline-normal",
-                                        thirdRow: "seat-recline-extra",
-                                        any: "help-circle-outline",
-                                    };
-                                    return (
-                                        <TouchableOpacity
-                                            key={st.type}
-                                            onPress={() => setSelectedSeat(st.type)}
-                                            activeOpacity={0.8}
-                                            style={[
-                                                tw`flex-row items-center px-4 py-3 rounded-xl border`,
-                                                {
-                                                    borderColor: isSelected ? colors.primary : colors.border,
-                                                    backgroundColor: isSelected ? colors.primarySoft : 'transparent',
-                                                },
-                                            ]}
-                                        >
-                                            <MaterialCommunityIcons
-                                                name={seatIcons[st.type] || "seat"}
-                                                size={20}
-                                                color={isSelected ? colors.primary : colors.textMuted}
-                                                style={tw`mr-3`}
-                                            />
-                                            <View style={tw`flex-1`}>
-                                                <Text
-                                                    style={[
-                                                        tw`text-sm`,
-                                                        { color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '500' },
-                                                    ]}
-                                                >
-                                                    {st.label || st.type}
-                                                </Text>
-                                                <Text style={[tw`text-[10px] mt-0.5`, { color: colors.textMuted }]}>
-                                                    {st.count} seat{st.count !== 1 ? 's' : ''} of this type
-                                                </Text>
-                                            </View>
-                                            {isSelected && (
-                                                <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
-                                            )}
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-                        </View>
-                    )}
+                    {/* ── Seat Preference Picker (old single-seat — only when not using form) ── */}
+                    {/* This is now handled inside the booking form modal */}
 
                 </View>
             </ScrollView>
+
+            {/* ── Booking Form Modal ─────────────────── */}
+            <Modal
+                visible={showBookingForm}
+                animationType="slide"
+                onRequestClose={() => setShowBookingForm(false)}
+            >
+                <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
+                    {/* Modal Header */}
+                    <View style={[tw`flex-row items-center px-5 pt-12 pb-4 border-b`, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <TouchableOpacity onPress={() => { if (bookingStep > 1) setBookingStep(bookingStep - 1); else setShowBookingForm(false); }} style={tw`mr-4`}>
+                            <Ionicons name={bookingStep > 1 ? "arrow-back" : "close"} size={24} color={colors.textPrimary} />
+                        </TouchableOpacity>
+                        <View style={tw`flex-1`}>
+                            <Text style={[tw`text-lg font-bold`, { color: colors.textPrimary }]}>
+                                {bookingStep === 1 ? "Book Ride" : "Choose Seats"}
+                            </Text>
+                            <Text style={[tw`text-xs`, { color: colors.textMuted }]}>
+                                Step {bookingStep} of 2 · ₹{estimatedFare || ride?.pricing?.baseFare} per person
+                            </Text>
+                        </View>
+                        <View style={tw`flex-row items-center gap-1.5`}>
+                            <View style={[tw`w-2 h-2 rounded-full`, { backgroundColor: colors.primary }]} />
+                            <View style={[tw`w-2 h-2 rounded-full`, { backgroundColor: bookingStep >= 2 ? colors.primary : colors.border }]} />
+                        </View>
+                    </View>
+
+                    <ScrollView contentContainerStyle={tw`px-5 pt-4 pb-32`} showsVerticalScrollIndicator={false}>
+                      {bookingStep === 1 ? (
+                        <>
+                        {/* ── Step 1: Rider Details ── */}
+                        <Text style={[tw`text-xs font-extrabold tracking-widest mb-3`, { color: colors.textSecondary }]}>ARE YOU RIDING?</Text>
+                        <View style={tw`flex-row gap-3 mb-5`}>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    setRiderIsPartOfRide(true);
+                                    // Adjust additional passengers count
+                                    const extra = totalSeatsWanted - 1;
+                                    setAdditionalPassengers((prev) => {
+                                        if (prev.length > extra) return prev.slice(0, extra);
+                                        const toAdd = extra - prev.length;
+                                        return [...prev, ...Array.from({ length: toAdd }, () => ({ name: "", age: "", sex: "", email: "" }))];
+                                    });
+                                }}
+                                activeOpacity={0.8}
+                                style={[
+                                    tw`flex-1 py-4 rounded-2xl items-center border-2`,
+                                    {
+                                        borderColor: riderIsPartOfRide ? colors.primary : colors.border,
+                                        backgroundColor: riderIsPartOfRide ? colors.primarySoft : colors.surface,
+                                    },
+                                ]}
+                            >
+                                <Ionicons name="person" size={24} color={riderIsPartOfRide ? colors.primary : colors.textMuted} />
+                                <Text style={[tw`text-sm font-bold mt-1`, { color: riderIsPartOfRide ? colors.primary : colors.textPrimary }]}>Yes, I'm riding</Text>
+                                <Text style={[tw`text-[10px] mt-0.5`, { color: colors.textMuted }]}>Use my account details</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    setRiderIsPartOfRide(false);
+                                    // Need at least 1 guest when rider is not part
+                                    setAdditionalPassengers((prev) => {
+                                        const needed = Math.max(1, totalSeatsWanted);
+                                        if (prev.length >= needed) return prev.slice(0, needed);
+                                        const toAdd = needed - prev.length;
+                                        return [...prev, ...Array.from({ length: toAdd }, () => ({ name: "", age: "", sex: "", email: "" }))];
+                                    });
+                                }}
+                                activeOpacity={0.8}
+                                style={[
+                                    tw`flex-1 py-4 rounded-2xl items-center border-2`,
+                                    {
+                                        borderColor: !riderIsPartOfRide ? colors.primary : colors.border,
+                                        backgroundColor: !riderIsPartOfRide ? colors.primarySoft : colors.surface,
+                                    },
+                                ]}
+                            >
+                                <Ionicons name="people" size={24} color={!riderIsPartOfRide ? colors.primary : colors.textMuted} />
+                                <Text style={[tw`text-sm font-bold mt-1`, { color: !riderIsPartOfRide ? colors.primary : colors.textPrimary }]}>No, booking for others</Text>
+                                <Text style={[tw`text-[10px] mt-0.5`, { color: colors.textMuted }]}>Enter rider details</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* ── You (when rider is part) ── */}
+                        {riderIsPartOfRide && (
+                            <View style={[tw`rounded-2xl border mb-5 overflow-hidden`, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                                <View style={[tw`px-4 py-3 flex-row items-center justify-between`]}>
+                                    <View style={tw`flex-row items-center gap-2`}>
+                                        <View style={[tw`w-8 h-8 rounded-full items-center justify-center`, { backgroundColor: colors.primarySoft }]}>
+                                            <Ionicons name="person" size={16} color={colors.primary} />
+                                        </View>
+                                        <View>
+                                            <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{user?.fullName || "You"}</Text>
+                                            <Text style={[tw`text-[10px]`, { color: colors.textMuted }]}>Your account</Text>
+                                        </View>
+                                    </View>
+                                    <View style={[tw`px-2.5 py-1 rounded-full`, { backgroundColor: colors.successSoft || "rgba(7,136,41,0.1)" }]}>
+                                        <Text style={[tw`text-[10px] font-bold`, { color: colors.success }]}>YOUR ACCOUNT</Text>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* ── Additional Passengers ── */}
+                        {additionalPassengers.length > 0 && (
+                            <Text style={[tw`text-xs font-extrabold tracking-widest mb-3`, { color: colors.textSecondary }]}>
+                                {riderIsPartOfRide ? "CO-RIDERS" : "RIDER DETAILS"}
+                            </Text>
+                        )}
+
+                        {additionalPassengers.map((guest, idx) => (
+                            <View
+                                key={idx}
+                                style={[tw`rounded-2xl border mb-4 overflow-hidden`, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                            >
+                                {/* Guest header */}
+                                <View style={[tw`px-4 py-3 flex-row items-center justify-between`, { borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surfaceMuted }]}>
+                                    <View style={tw`flex-row items-center gap-2`}>
+                                        <View style={[tw`w-7 h-7 rounded-full items-center justify-center`, { backgroundColor: colors.primary }]}>
+                                            <Text style={tw`text-white text-xs font-bold`}>{idx + 1}</Text>
+                                        </View>
+                                        <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>
+                                            {guest.name.trim() || `Rider ${idx + 1}`}
+                                        </Text>
+                                    </View>
+                                    {additionalPassengers.length > (riderIsPartOfRide ? 0 : 1) && (
+                                        <TouchableOpacity onPress={() => removeGuestSlot(idx)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                            <Ionicons name="close-circle" size={22} color="#ef4444" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+
+                                <View style={tw`px-4 py-3 gap-3`}>
+                                    {/* Name */}
+                                    <View>
+                                        <Text style={[tw`text-[10px] font-bold uppercase mb-1`, { color: colors.textMuted }]}>Full Name *</Text>
+                                        <TextInput
+                                            value={guest.name}
+                                            onChangeText={(v) => updateGuest(idx, "name", v)}
+                                            placeholder="Enter full name"
+                                            placeholderTextColor={colors.textMuted}
+                                            style={[tw`text-sm px-3 py-2.5 rounded-xl border`, { backgroundColor: colors.surfaceMuted, borderColor: colors.border, color: colors.textPrimary }]}
+                                        />
+                                    </View>
+
+                                    {/* Age + Sex row */}
+                                    <View style={tw`flex-row gap-3`}>
+                                        <View style={tw`flex-1`}>
+                                            <Text style={[tw`text-[10px] font-bold uppercase mb-1`, { color: colors.textMuted }]}>Age</Text>
+                                            <TextInput
+                                                value={guest.age}
+                                                onChangeText={(v) => updateGuest(idx, "age", v.replace(/[^0-9]/g, ""))}
+                                                placeholder="Age"
+                                                keyboardType="numeric"
+                                                placeholderTextColor={colors.textMuted}
+                                                style={[tw`text-sm px-3 py-2.5 rounded-xl border`, { backgroundColor: colors.surfaceMuted, borderColor: colors.border, color: colors.textPrimary }]}
+                                            />
+                                        </View>
+                                        <View style={tw`flex-1`}>
+                                            <Text style={[tw`text-[10px] font-bold uppercase mb-1`, { color: colors.textMuted }]}>Sex</Text>
+                                            <View style={tw`flex-row gap-2`}>
+                                                {["male", "female", "other"].map((s) => {
+                                                    const sel = guest.sex === s;
+                                                    return (
+                                                        <TouchableOpacity
+                                                            key={s}
+                                                            onPress={() => updateGuest(idx, "sex", s)}
+                                                            style={[tw`flex-1 py-2.5 rounded-xl items-center border`, { borderColor: sel ? colors.primary : colors.border, backgroundColor: sel ? colors.primarySoft : colors.surfaceMuted }]}
+                                                        >
+                                                            <Text style={[tw`text-[10px] font-bold capitalize`, { color: sel ? colors.primary : colors.textSecondary }]}>{s}</Text>
+                                                        </TouchableOpacity>
+                                                    );
+                                                })}
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    {/* Email */}
+                                    <View>
+                                        <Text style={[tw`text-[10px] font-bold uppercase mb-1`, { color: colors.textMuted }]}>Email *</Text>
+                                        <TextInput
+                                            value={guest.email}
+                                            onChangeText={(v) => updateGuest(idx, "email", v)}
+                                            placeholder="Email for contact"
+                                            keyboardType="email-address"
+                                            autoCapitalize="none"
+                                            placeholderTextColor={colors.textMuted}
+                                            style={[tw`text-sm px-3 py-2.5 rounded-xl border`, { backgroundColor: colors.surfaceMuted, borderColor: colors.border, color: colors.textPrimary }]}
+                                        />
+                                    </View>
+                                </View>
+                            </View>
+                        ))}
+
+                        {/* ── Add more riders ── */}
+                        {((riderIsPartOfRide ? 1 : 0) + additionalPassengers.length) < (ride?.seats?.available || 8) && (
+                            <TouchableOpacity
+                                onPress={addGuestSlot}
+                                style={[tw`flex-row items-center justify-center py-3 rounded-xl border-2 border-dashed mb-4`, { borderColor: colors.primary }]}
+                            >
+                                <Ionicons name="add-circle-outline" size={20} color={colors.primary} style={tw`mr-2`} />
+                                <Text style={[tw`text-sm font-bold`, { color: colors.primary }]}>Add Another Rider</Text>
+                            </TouchableOpacity>
+                        )}
+
+                        {/* ── Summary ── */}
+                        <View style={[tw`rounded-2xl border p-4 mt-2`, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}>
+                            <Text style={[tw`text-xs font-extrabold tracking-widest mb-2`, { color: colors.textSecondary }]}>BOOKING SUMMARY</Text>
+                            <View style={tw`flex-row justify-between items-center mb-1`}>
+                                <Text style={[tw`text-sm`, { color: colors.textSecondary }]}>Total riders</Text>
+                                <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{(riderIsPartOfRide ? 1 : 0) + additionalPassengers.length}</Text>
+                            </View>
+                            <View style={tw`flex-row justify-between items-center mb-1`}>
+                                <Text style={[tw`text-sm`, { color: colors.textSecondary }]}>Fare per person</Text>
+                                <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>₹{estimatedFare || ride?.pricing?.baseFare}</Text>
+                            </View>
+                            <View style={[tw`flex-row justify-between items-center pt-2 mt-1 border-t`, { borderColor: colors.border }]}>
+                                <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>Estimated Total</Text>
+                                <Text style={[tw`text-lg font-extrabold`, { color: colors.primary }]}>
+                                    ₹{((parseInt(estimatedFare) || ride?.pricing?.baseFare || 0) * ((riderIsPartOfRide ? 1 : 0) + additionalPassengers.length))}
+                                </Text>
+                            </View>
+                        </View>
+                        </>
+                      ) : (
+                        <>
+                        {/* ── Step 2: Seat Assignment ── */}
+                        <Text style={[tw`text-xs font-extrabold tracking-widest mb-1`, { color: colors.textSecondary }]}>ASSIGN SEATS</Text>
+                        <Text style={[tw`text-xs mb-5`, { color: colors.textMuted }]}>
+                            Choose a seat for each rider. Already-taken seats are greyed out.
+                        </Text>
+
+                        {/* Self seat assignment */}
+                        {riderIsPartOfRide && (() => {
+                            const avail = computeAvailableSeats("self");
+                            const hasSeatTypes = (ride?.seats?.seatTypes || []).some(st => st.count > 0 && st.type !== 'any');
+                            return (
+                                <View style={[tw`rounded-2xl border mb-4 overflow-hidden`, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                                    <View style={[tw`px-4 py-3 flex-row items-center gap-2`, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                                        <View style={[tw`w-8 h-8 rounded-full items-center justify-center`, { backgroundColor: colors.primarySoft }]}>
+                                            <Ionicons name="person" size={16} color={colors.primary} />
+                                        </View>
+                                        <Text style={[tw`text-sm font-bold flex-1`, { color: colors.textPrimary }]}>{user?.fullName || "You"}</Text>
+                                        {seatSelections["self"] && seatSelections["self"] !== "any" && (
+                                            <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                                <Text style={[tw`text-[10px] font-bold`, { color: colors.primary }]}>
+                                                    {SEAT_TYPES_LIST.find(s => s.type === seatSelections["self"])?.label || seatSelections["self"]}
+                                                </Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                    <View style={tw`px-4 py-3 flex-row flex-wrap gap-2`}>
+                                        {hasSeatTypes && (ride.seats?.seatTypes || []).filter(st => st.count > 0 && st.type !== 'any').map((st) => {
+                                            const sel = seatSelections["self"] === st.type;
+                                            const remaining = avail[st.type] ?? 0;
+                                            const disabled = !sel && remaining <= 0;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={st.type}
+                                                    disabled={disabled}
+                                                    onPress={() => setSeatSelections(prev => ({ ...prev, "self": st.type }))}
+                                                    style={[tw`px-3 py-2 rounded-xl border`, {
+                                                        borderColor: sel ? colors.primary : disabled ? colors.border : colors.border,
+                                                        backgroundColor: sel ? colors.primarySoft : disabled ? colors.surfaceMuted : 'transparent',
+                                                        opacity: disabled ? 0.4 : 1,
+                                                    }]}
+                                                >
+                                                    <Text style={[tw`text-xs`, { color: sel ? colors.primary : disabled ? colors.textMuted : colors.textPrimary, fontWeight: sel ? '700' : '500' }]}>
+                                                        {st.label || st.type}
+                                                    </Text>
+                                                    <Text style={[tw`text-[9px] mt-0.5`, { color: sel ? colors.primary : colors.textMuted }]}>
+                                                        {remaining} left
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                        <TouchableOpacity
+                                            onPress={() => setSeatSelections(prev => ({ ...prev, "self": "any" }))}
+                                            style={[tw`px-3 py-2 rounded-xl border`, {
+                                                borderColor: (!seatSelections["self"] || seatSelections["self"] === "any") ? colors.primary : colors.border,
+                                                backgroundColor: (!seatSelections["self"] || seatSelections["self"] === "any") ? colors.primarySoft : 'transparent',
+                                            }]}
+                                        >
+                                            <Text style={[tw`text-xs`, { color: (!seatSelections["self"] || seatSelections["self"] === "any") ? colors.primary : colors.textPrimary, fontWeight: (!seatSelections["self"] || seatSelections["self"] === "any") ? '700' : '500' }]}>Any Seat</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            );
+                        })()}
+
+                        {/* Guest seat assignments */}
+                        {additionalPassengers.map((guest, idx) => {
+                            const avail = computeAvailableSeats(idx);
+                            const hasSeatTypes = (ride?.seats?.seatTypes || []).some(st => st.count > 0 && st.type !== 'any');
+                            return (
+                                <View
+                                    key={idx}
+                                    style={[tw`rounded-2xl border mb-4 overflow-hidden`, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                                >
+                                    <View style={[tw`px-4 py-3 flex-row items-center gap-2`, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                                        <View style={[tw`w-7 h-7 rounded-full items-center justify-center`, { backgroundColor: colors.primary }]}>
+                                            <Text style={tw`text-white text-xs font-bold`}>{idx + 1}</Text>
+                                        </View>
+                                        <Text style={[tw`text-sm font-bold flex-1`, { color: colors.textPrimary }]}>
+                                            {guest.name.trim() || `Rider ${idx + 1}`}
+                                        </Text>
+                                        {seatSelections[idx] && seatSelections[idx] !== "any" && (
+                                            <View style={[tw`px-2 py-1 rounded-full`, { backgroundColor: colors.primarySoft }]}>
+                                                <Text style={[tw`text-[10px] font-bold`, { color: colors.primary }]}>
+                                                    {SEAT_TYPES_LIST.find(s => s.type === seatSelections[idx])?.label || seatSelections[idx]}
+                                                </Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                    <View style={tw`px-4 py-3 flex-row flex-wrap gap-2`}>
+                                        {hasSeatTypes && (ride.seats?.seatTypes || []).filter(st => st.count > 0 && st.type !== 'any').map((st) => {
+                                            const sel = seatSelections[idx] === st.type;
+                                            const remaining = avail[st.type] ?? 0;
+                                            const disabled = !sel && remaining <= 0;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={st.type}
+                                                    disabled={disabled}
+                                                    onPress={() => setSeatSelections(prev => ({ ...prev, [idx]: st.type }))}
+                                                    style={[tw`px-3 py-2 rounded-xl border`, {
+                                                        borderColor: sel ? colors.primary : disabled ? colors.border : colors.border,
+                                                        backgroundColor: sel ? colors.primarySoft : disabled ? colors.surfaceMuted : 'transparent',
+                                                        opacity: disabled ? 0.4 : 1,
+                                                    }]}
+                                                >
+                                                    <Text style={[tw`text-xs`, { color: sel ? colors.primary : disabled ? colors.textMuted : colors.textPrimary, fontWeight: sel ? '700' : '500' }]}>
+                                                        {st.label || st.type}
+                                                    </Text>
+                                                    <Text style={[tw`text-[9px] mt-0.5`, { color: sel ? colors.primary : colors.textMuted }]}>
+                                                        {remaining} left
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                        <TouchableOpacity
+                                            onPress={() => setSeatSelections(prev => ({ ...prev, [idx]: "any" }))}
+                                            style={[tw`px-3 py-2 rounded-xl border`, {
+                                                borderColor: (!seatSelections[idx] || seatSelections[idx] === "any") ? colors.primary : colors.border,
+                                                backgroundColor: (!seatSelections[idx] || seatSelections[idx] === "any") ? colors.primarySoft : 'transparent',
+                                            }]}
+                                        >
+                                            <Text style={[tw`text-xs`, { color: (!seatSelections[idx] || seatSelections[idx] === "any") ? colors.primary : colors.textPrimary, fontWeight: (!seatSelections[idx] || seatSelections[idx] === "any") ? '700' : '500' }]}>Any Seat</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            );
+                        })}
+                        </>
+                      )}
+                    </ScrollView>
+
+                    {/* Modal Footer */}
+                    <View style={[tw`absolute bottom-0 left-0 right-0 px-5 pb-8 pt-4`, { backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }]}>
+                        {bookingStep === 1 ? (
+                            <TouchableOpacity
+                                onPress={() => {
+                                    for (let i = 0; i < additionalPassengers.length; i++) {
+                                        const g = additionalPassengers[i];
+                                        if (!g.name.trim()) { Alert.alert("Missing info", `Please enter a name for Rider ${i + 1}.`); return; }
+                                        if (!g.email.trim()) { Alert.alert("Missing info", `Please enter an email for ${g.name || `Rider ${i + 1}`}.`); return; }
+                                    }
+                                    if ((riderIsPartOfRide ? 1 : 0) + additionalPassengers.length === 0) {
+                                        Alert.alert("No riders", "Please add at least one rider.");
+                                        return;
+                                    }
+                                    setBookingStep(2);
+                                }}
+                                activeOpacity={0.85}
+                                style={[tw`py-3.5 rounded-xl items-center flex-row justify-center gap-2`, { backgroundColor: colors.primary }]}
+                            >
+                                <Text style={[tw`text-sm font-extrabold`, { color: "#fff" }]}>
+                                    Next: Choose Seats →
+                                </Text>
+                            </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity
+                                onPress={handleRequest}
+                                disabled={booking}
+                                activeOpacity={0.85}
+                                style={[tw`py-3.5 rounded-xl items-center flex-row justify-center gap-2`, { backgroundColor: colors.primary }]}
+                            >
+                                {booking ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                    <>
+                                        <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                                        <Text style={[tw`text-sm font-extrabold`, { color: "#fff" }]}>
+                                            Request {(riderIsPartOfRide ? 1 : 0) + additionalPassengers.length} Seat{((riderIsPartOfRide ? 1 : 0) + additionalPassengers.length) !== 1 ? "s" : ""} · ₹{((parseInt(estimatedFare) || ride?.pricing?.baseFare || 0) * ((riderIsPartOfRide ? 1 : 0) + additionalPassengers.length))}
+                                        </Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </View>
+            </Modal>
 
             {/* ── Bottom CTA ───────────────────────── */}
             <View
@@ -814,32 +1326,62 @@ export default function RideSearchDetails() {
                         </Text>
                     </View>
                 ) : booked ? (
-                    <View
-                        style={[
-                            tw`flex-row items-center justify-center gap-2 py-3.5 rounded-xl`,
-                            { backgroundColor: "rgba(7,136,41,0.12)" },
-                        ]}
-                    >
-                        <MaterialCommunityIcons name="check-circle" size={18} color={colors.success} />
-                        <Text style={[tw`text-sm font-bold`, { color: colors.success }]}>
-                            Ride Confirmed
-                        </Text>
+                    <View style={tw`gap-2`}>
+                        <View
+                            style={[
+                                tw`flex-row items-center justify-center gap-2 py-3 rounded-xl`,
+                                { backgroundColor: "rgba(7,136,41,0.12)" },
+                            ]}
+                        >
+                            <MaterialCommunityIcons name="check-circle" size={18} color={colors.success} />
+                            <Text style={[tw`text-sm font-bold`, { color: colors.success }]}>
+                                Ride Confirmed
+                            </Text>
+                        </View>
+                        {(ride?.seats?.available || 0) > 0 && (
+                            <TouchableOpacity
+                                onPress={openBookingForm}
+                                disabled={booking}
+                                activeOpacity={0.85}
+                                style={[tw`py-3 rounded-xl items-center flex-row justify-center gap-2 border`, { borderColor: colors.primary }]}
+                            >
+                                <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                                <Text style={[tw`text-sm font-bold`, { color: colors.primary }]}>
+                                    Book More Seats ({ride.seats.available} left)
+                                </Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 ) : requested ? (
-                    <View
-                        style={[
-                            tw`flex-row items-center justify-center gap-2 py-3.5 rounded-xl`,
-                            { backgroundColor: "rgba(245,158,11,0.12)" },
-                        ]}
-                    >
-                        <MaterialCommunityIcons name="clock-outline" size={18} color="#f59e0b" />
-                        <Text style={[tw`text-sm font-bold`, { color: "#f59e0b" }]}>
-                            Requested — Waiting for Driver
-                        </Text>
+                    <View style={tw`gap-2`}>
+                        <View
+                            style={[
+                                tw`flex-row items-center justify-center gap-2 py-3 rounded-xl`,
+                                { backgroundColor: "rgba(245,158,11,0.12)" },
+                            ]}
+                        >
+                            <MaterialCommunityIcons name="clock-outline" size={18} color="#f59e0b" />
+                            <Text style={[tw`text-sm font-bold`, { color: "#f59e0b" }]}>
+                                Requested — Waiting for Driver
+                            </Text>
+                        </View>
+                        {(ride?.seats?.available || 0) > 0 && (
+                            <TouchableOpacity
+                                onPress={openBookingForm}
+                                disabled={booking}
+                                activeOpacity={0.85}
+                                style={[tw`py-3 rounded-xl items-center flex-row justify-center gap-2 border`, { borderColor: colors.primary }]}
+                            >
+                                <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                                <Text style={[tw`text-sm font-bold`, { color: colors.primary }]}>
+                                    Book More Seats ({ride.seats.available} left)
+                                </Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 ) : (
                     <TouchableOpacity
-                        onPress={handleRequest}
+                        onPress={openBookingForm}
                         disabled={booking}
                         activeOpacity={0.85}
                         style={[tw`py-3.5 rounded-xl items-center`, { backgroundColor: colors.primary }]}
@@ -848,7 +1390,7 @@ export default function RideSearchDetails() {
                             <ActivityIndicator size="small" color={colors.primaryText} />
                         ) : (
                             <Text style={[tw`text-sm font-extrabold`, { color: colors.primaryText }]}>
-                                Request Ride · ₹{estimatedFare}
+                                Book {totalSeatsWanted} Seat{totalSeatsWanted !== 1 ? "s" : ""} · ₹{estimatedFare}
                             </Text>
                         )}
                     </TouchableOpacity>

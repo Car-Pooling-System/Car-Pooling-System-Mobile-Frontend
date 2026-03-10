@@ -421,8 +421,9 @@ export default function SearchRides() {
         setLoading(true);
         setSearched(true);
         try {
+            const dateStr = date.toISOString();
             const [searchRes, bookingsRes] = await Promise.all([
-                fetch(`${BACKEND_URL}/api/rides/search?pickupLat=${pickup.lat}&pickupLng=${pickup.lng}&dropLat=${drop.lat}&dropLng=${drop.lng}`),
+                fetch(`${BACKEND_URL}/api/rides/search?pickupLat=${pickup.lat}&pickupLng=${pickup.lng}&dropLat=${drop.lat}&dropLng=${drop.lng}&date=${encodeURIComponent(dateStr)}&minSeats=${seats}`),
                 fetch(`${BACKEND_URL}/api/rider/rider-rides/${user?.id}`),
             ]);
             const searchData = await searchRes.json();
@@ -520,6 +521,29 @@ export default function SearchRides() {
                 <TouchableOpacity
                     key={rideId}
                     onPress={() => {
+                        // Already booked / requested / driver → go straight to details
+                        if (isBooked || isRequested || isDriver) {
+                            const startCoords = item.route?.start?.location?.coordinates;
+                            const endCoords   = item.route?.end?.location?.coordinates;
+                            router.push({
+                                pathname: "/(rider)/search/details",
+                                params: {
+                                    rideId,
+                                    pickupName: pickup?.name || item.route?.start?.name || "",
+                                    pickupLat:  String(pickup?.lat ?? (startCoords ? startCoords[1] : "")),
+                                    pickupLng:  String(pickup?.lng ?? (startCoords ? startCoords[0] : "")),
+                                    dropName:   drop?.name || item.route?.end?.name || "",
+                                    dropLat:    String(drop?.lat ?? (endCoords ? endCoords[1] : "")),
+                                    dropLng:    String(drop?.lng ?? (endCoords ? endCoords[0] : "")),
+                                    estimatedFare: String(item.estimate?.fare ?? ""),
+                                    isBooked: isBooked ? "1" : "0",
+                                    isRequested: isRequested ? "1" : "0",
+                                    isDriver: isDriver ? "1" : "0",
+                                    seatsRequested: String(seats),
+                                },
+                            });
+                            return;
+                        }
                         if (!searched) {
                             setSelectedNearbyRide(item);
                             setBookingPickup(pickup || null);
@@ -536,6 +560,7 @@ export default function SearchRides() {
                                 isBooked: isBooked ? "1" : "0",
                                 isRequested: isRequested ? "1" : "0",
                                 isDriver: isDriver ? "1" : "0",
+                                seatsRequested: String(seats),
                             },
                         });
                     }}
@@ -1119,6 +1144,7 @@ export default function SearchRides() {
                                         isBooked: isBkd ? "1" : "0",
                                         isRequested: isReq ? "1" : "0",
                                         isDriver: isDrv ? "1" : "0",
+                                        seatsRequested: String(seats),
                                     },
                                 });
                             }}

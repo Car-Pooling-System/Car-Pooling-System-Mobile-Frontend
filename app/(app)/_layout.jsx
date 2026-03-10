@@ -38,6 +38,8 @@ export default function TabsLayout() {
                         iconName = focused ? "add-circle" : "add-circle-outline";
                     } else if (route.name === "my-rides") {
                         iconName = focused ? "car" : "car-outline";
+                    } else if (route.name === "chat") {
+                        iconName = focused ? "chatbubbles" : "chatbubbles-outline";
                     } else if (route.name === "profile") {
                         iconName = focused ? "person" : "person-outline";
                     } else {
@@ -61,6 +63,7 @@ export default function TabsLayout() {
         >
             <Tabs.Screen name="my-rides" options={{ title: "My Rides" }} />
             <Tabs.Screen name="hosting" options={{ title: "Create Ride" }} />
+            <Tabs.Screen name="chat" options={{ title: "Chat" }} />
             <Tabs.Screen name="profile" options={{ title: "Profile" }} />
         </Tabs>
     );
