@@ -1275,10 +1275,6 @@ export default function RideSearchDetails() {
                                         Alert.alert("No riders", "Please add at least one rider.");
                                         return;
                                     }
-                                    if (!(ride?.seats?.seatTypes?.some(st => st.count > 0 && st.type !== 'any'))) {
-                                        handleRequest();
-                                        return;
-                                    }
                                     setBookingStep(2);
                                 }}
                                 activeOpacity={0.85}
@@ -1330,28 +1326,58 @@ export default function RideSearchDetails() {
                         </Text>
                     </View>
                 ) : booked ? (
-                    <View
-                        style={[
-                            tw`flex-row items-center justify-center gap-2 py-3.5 rounded-xl`,
-                            { backgroundColor: "rgba(7,136,41,0.12)" },
-                        ]}
-                    >
-                        <MaterialCommunityIcons name="check-circle" size={18} color={colors.success} />
-                        <Text style={[tw`text-sm font-bold`, { color: colors.success }]}>
-                            Ride Confirmed
-                        </Text>
+                    <View style={tw`gap-2`}>
+                        <View
+                            style={[
+                                tw`flex-row items-center justify-center gap-2 py-3 rounded-xl`,
+                                { backgroundColor: "rgba(7,136,41,0.12)" },
+                            ]}
+                        >
+                            <MaterialCommunityIcons name="check-circle" size={18} color={colors.success} />
+                            <Text style={[tw`text-sm font-bold`, { color: colors.success }]}>
+                                Ride Confirmed
+                            </Text>
+                        </View>
+                        {(ride?.seats?.available || 0) > 0 && (
+                            <TouchableOpacity
+                                onPress={openBookingForm}
+                                disabled={booking}
+                                activeOpacity={0.85}
+                                style={[tw`py-3 rounded-xl items-center flex-row justify-center gap-2 border`, { borderColor: colors.primary }]}
+                            >
+                                <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                                <Text style={[tw`text-sm font-bold`, { color: colors.primary }]}>
+                                    Book More Seats ({ride.seats.available} left)
+                                </Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 ) : requested ? (
-                    <View
-                        style={[
-                            tw`flex-row items-center justify-center gap-2 py-3.5 rounded-xl`,
-                            { backgroundColor: "rgba(245,158,11,0.12)" },
-                        ]}
-                    >
-                        <MaterialCommunityIcons name="clock-outline" size={18} color="#f59e0b" />
-                        <Text style={[tw`text-sm font-bold`, { color: "#f59e0b" }]}>
-                            Requested — Waiting for Driver
-                        </Text>
+                    <View style={tw`gap-2`}>
+                        <View
+                            style={[
+                                tw`flex-row items-center justify-center gap-2 py-3 rounded-xl`,
+                                { backgroundColor: "rgba(245,158,11,0.12)" },
+                            ]}
+                        >
+                            <MaterialCommunityIcons name="clock-outline" size={18} color="#f59e0b" />
+                            <Text style={[tw`text-sm font-bold`, { color: "#f59e0b" }]}>
+                                Requested — Waiting for Driver
+                            </Text>
+                        </View>
+                        {(ride?.seats?.available || 0) > 0 && (
+                            <TouchableOpacity
+                                onPress={openBookingForm}
+                                disabled={booking}
+                                activeOpacity={0.85}
+                                style={[tw`py-3 rounded-xl items-center flex-row justify-center gap-2 border`, { borderColor: colors.primary }]}
+                            >
+                                <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                                <Text style={[tw`text-sm font-bold`, { color: colors.primary }]}>
+                                    Book More Seats ({ride.seats.available} left)
+                                </Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 ) : (
                     <TouchableOpacity

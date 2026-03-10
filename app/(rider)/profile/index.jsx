@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, Image, ScrollView, Alert, useColorScheme, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, Image, ScrollView, Alert, useColorScheme, ActivityIndicator, TextInput, Modal } from "react-native";
 import { useUser, useAuth } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
 import { useState, useEffect } from "react";
@@ -19,6 +19,19 @@ export default function RiderProfile() {
     const [riderVerification, setRiderVerification] = useState({ aadharVerified: false });
     const [aadharVerifying, setAadharVerifying] = useState(false);
 
+    // Emergency contacts state
+    const [emergencyContacts, setEmergencyContacts] = useState([
+        { name: "", email: "", phone: "" },
+        { name: "", email: "", phone: "" },
+        { name: "", email: "", phone: "" },
+    ]);
+    const [savingContacts, setSavingContacts] = useState(false);
+    const [hasSosCode, setHasSosCode] = useState(false);
+    const [showSosCodeModal, setShowSosCodeModal] = useState(false);
+    const [sosCode, setSosCode] = useState("");
+    const [sosCodeConfirm, setSosCodeConfirm] = useState("");
+    const [savingSosCode, setSavingSosCode] = useState(false);
+
     const fetchRiderVerification = async () => {
         if (!user?.id || !BACKEND_URL) return;
         try {
@@ -27,7 +40,93 @@ export default function RiderProfile() {
         } catch (e) { /* silent */ }
     };
 
-    useEffect(() => { fetchRiderVerification(); }, [user?.id]);
+    const fetchEmergencyData = async () => {
+        if (!user?.id || !BACKEND_URL) return;
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/rider/emergency/${user.id}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.emergencyContacts?.length > 0) {
+                    const padded = [...data.emergencyContacts];
+                    while (padded.length < 3) padded.push({ name: "", email: "", phone: "" });
+                    setEmergencyContacts(padded.slice(0, 3));
+                }
+                setHasSosCode(data.hasSosCode || false);
+            }
+        } catch (e) { /* silent */ }
+    };
+
+    useEffect(() => {
+        fetchRiderVerification();
+        fetchEmergencyData();
+    }, [user?.id]);
+
+    const handleSaveContacts = async () => {
+        const validContacts = emergencyContacts.filter(c => c.email && c.email.includes("@"));
+        if (validContacts.length === 0) {
+            Alert.alert("Error", "Please add at least one contact with a valid email.");
+            return;
+        }
+        setSavingContacts(true);
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/rider/emergency/${user.id}/contacts`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ contacts: validContacts }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                Alert.alert("✅ Saved", `${validContacts.length} emergency contact(s) saved.`);
+            } else {
+                Alert.alert("Error", data.message || "Failed to save");
+            }
+        } catch (e) {
+            Alert.alert("Error", "Failed to save contacts");
+        } finally {
+            setSavingContacts(false);
+        }
+    };
+
+    const handleSaveSosCode = async () => {
+        if (!sosCode || sosCode.length < 4) {
+            Alert.alert("Error", "Secret code must be at least 4 characters.");
+            return;
+        }
+        if (sosCode !== sosCodeConfirm) {
+            Alert.alert("Error", "Codes don't match. Please try again.");
+            return;
+        }
+        setSavingSosCode(true);
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/rider/emergency/${user.id}/sos-code`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code: sosCode }),
+            });
+            if (res.ok) {
+                setHasSosCode(true);
+                setShowSosCodeModal(false);
+                setSosCode("");
+                setSosCodeConfirm("");
+                Alert.alert("✅ Saved", "SOS secret code has been set. Enter this code to cancel an SOS alert.");
+            } else {
+                const data = await res.json();
+                Alert.alert("Error", data.message || "Failed to save");
+            }
+        } catch (e) {
+            Alert.alert("Error", "Failed to save code");
+        } finally {
+            setSavingSosCode(false);
+        }
+    };
+
+    const updateContact = (index, field, value) => {
+        setEmergencyContacts(prev => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], [field]: value };
+            return updated;
+        });
+    };
 
     const handleMockVerifyAadhar = async () => {
         try {
@@ -193,6 +292,88 @@ export default function RiderProfile() {
                 </TouchableOpacity>
             </View>
 
+            {/* ═══════ Emergency Contacts ═══════ */}
+            <View style={[tw`mx-6 mt-6 rounded-2xl overflow-hidden`, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}>
+                <View style={[tw`px-4 py-3 flex-row items-center`, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                    <Ionicons name="call" size={18} color="#dc2626" />
+                    <Text style={[tw`text-base font-bold ml-2`, { color: colors.textPrimary }]}>Emergency Contacts</Text>
+                    <Text style={[tw`text-[10px] ml-2 px-2 py-0.5 rounded-full font-bold`, { backgroundColor: "#fef2f2", color: "#dc2626" }]}>SOS</Text>
+                </View>
+
+                <View style={tw`px-4 py-3`}>
+                    <Text style={[tw`text-xs mb-3`, { color: colors.textSecondary }]}>
+                        These contacts will be emailed when you trigger an SOS alert during a ride.
+                    </Text>
+
+                    {emergencyContacts.map((contact, idx) => (
+                        <View key={idx} style={[tw`mb-3 rounded-xl p-3`, { backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.border }]}>
+                            <Text style={[tw`text-[10px] font-bold mb-2`, { color: colors.textMuted }]}>CONTACT {idx + 1}</Text>
+                            <TextInput
+                                placeholder="Name"
+                                value={contact.name}
+                                onChangeText={(v) => updateContact(idx, "name", v)}
+                                style={[tw`text-sm py-2 px-3 rounded-lg mb-2`, { backgroundColor: colors.surface, color: colors.textPrimary, borderWidth: 1, borderColor: colors.border }]}
+                                placeholderTextColor={colors.textMuted}
+                            />
+                            <TextInput
+                                placeholder="Email *"
+                                value={contact.email}
+                                onChangeText={(v) => updateContact(idx, "email", v)}
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                                style={[tw`text-sm py-2 px-3 rounded-lg mb-2`, { backgroundColor: colors.surface, color: colors.textPrimary, borderWidth: 1, borderColor: contact.email && !contact.email.includes("@") ? "#dc2626" : colors.border }]}
+                                placeholderTextColor={colors.textMuted}
+                            />
+                            <TextInput
+                                placeholder="Phone (optional)"
+                                value={contact.phone}
+                                onChangeText={(v) => updateContact(idx, "phone", v)}
+                                keyboardType="phone-pad"
+                                style={[tw`text-sm py-2 px-3 rounded-lg`, { backgroundColor: colors.surface, color: colors.textPrimary, borderWidth: 1, borderColor: colors.border }]}
+                                placeholderTextColor={colors.textMuted}
+                            />
+                        </View>
+                    ))}
+
+                    <TouchableOpacity
+                        onPress={handleSaveContacts}
+                        disabled={savingContacts}
+                        style={[tw`py-3 rounded-xl items-center`, { backgroundColor: "#dc2626" }, savingContacts && tw`opacity-50`]}
+                    >
+                        {savingContacts ? (
+                            <ActivityIndicator size="small" color="white" />
+                        ) : (
+                            <View style={tw`flex-row items-center gap-2`}>
+                                <Ionicons name="save" size={16} color="white" />
+                                <Text style={tw`text-white font-bold`}>Save Emergency Contacts</Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            {/* ═══════ SOS Secret Code ═══════ */}
+            <View style={[tw`mx-6 mt-4 rounded-2xl overflow-hidden`, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}>
+                <TouchableOpacity
+                    onPress={() => setShowSosCodeModal(true)}
+                    style={tw`flex-row items-center px-4 py-4`}
+                >
+                    <View style={[tw`w-10 h-10 rounded-xl items-center justify-center mr-4`, { backgroundColor: "#fef2f2" }]}>
+                        <Ionicons name="key" size={20} color="#dc2626" />
+                    </View>
+                    <View style={tw`flex-1`}>
+                        <Text style={[tw`font-semibold text-base`, { color: colors.textPrimary }]}>SOS Secret Code</Text>
+                        <Text style={[tw`text-xs mt-0.5`, { color: colors.textSecondary }]}>
+                            {hasSosCode ? "Code is set ✓ — tap to change" : "Set a code to cancel SOS alerts"}
+                        </Text>
+                    </View>
+                    <View style={tw`flex-row items-center gap-1`}>
+                        {hasSosCode && <Ionicons name="checkmark-circle" size={16} color="#059669" />}
+                        <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                    </View>
+                </TouchableOpacity>
+            </View>
+
             {/* Sign Out */}
             <View style={tw`mx-6 mt-4 mb-10`}>
                 <TouchableOpacity
@@ -204,6 +385,66 @@ export default function RiderProfile() {
                     <Text style={tw`text-white font-bold text-base`}>Sign Out</Text>
                 </TouchableOpacity>
             </View>
+
+            {/* ═══════ SOS Secret Code Modal ═══════ */}
+            <Modal visible={showSosCodeModal} transparent animationType="slide" onRequestClose={() => setShowSosCodeModal(false)}>
+                <View style={[tw`flex-1 justify-end`, { backgroundColor: "rgba(0,0,0,0.55)" }]}>
+                    <TouchableOpacity style={tw`flex-1`} activeOpacity={1} onPress={() => setShowSosCodeModal(false)} />
+                    <View style={[tw`rounded-t-3xl px-6 pt-5 pb-8`, { backgroundColor: colors.surface }]}>
+                        <View style={[tw`w-10 h-1 rounded-full self-center mb-5`, { backgroundColor: colors.border }]} />
+
+                        <View style={tw`items-center mb-5`}>
+                            <View style={[tw`w-14 h-14 rounded-full items-center justify-center mb-3`, { backgroundColor: "#fef2f2" }]}>
+                                <Ionicons name="key" size={28} color="#dc2626" />
+                            </View>
+                            <Text style={[tw`text-lg font-bold`, { color: colors.textPrimary }]}>Set SOS Secret Code</Text>
+                            <Text style={[tw`text-xs mt-1 text-center`, { color: colors.textSecondary }]}>
+                                When SOS is triggered, enter this code within the time limit to cancel the alert. If not entered, emergency emails are sent.
+                            </Text>
+                        </View>
+
+                        <Text style={[tw`text-xs font-bold mb-1 ml-1`, { color: colors.textSecondary }]}>SECRET CODE</Text>
+                        <TextInput
+                            value={sosCode}
+                            onChangeText={setSosCode}
+                            secureTextEntry
+                            placeholder="Enter secret code (min 4 chars)"
+                            placeholderTextColor={colors.textMuted}
+                            style={[tw`text-base py-3 px-4 rounded-xl border mb-3`, {
+                                color: colors.textPrimary,
+                                backgroundColor: colors.surfaceMuted,
+                                borderColor: colors.border,
+                            }]}
+                        />
+
+                        <Text style={[tw`text-xs font-bold mb-1 ml-1`, { color: colors.textSecondary }]}>CONFIRM CODE</Text>
+                        <TextInput
+                            value={sosCodeConfirm}
+                            onChangeText={setSosCodeConfirm}
+                            secureTextEntry
+                            placeholder="Re-enter secret code"
+                            placeholderTextColor={colors.textMuted}
+                            style={[tw`text-base py-3 px-4 rounded-xl border mb-5`, {
+                                color: colors.textPrimary,
+                                backgroundColor: colors.surfaceMuted,
+                                borderColor: sosCodeConfirm && sosCode !== sosCodeConfirm ? "#dc2626" : colors.border,
+                            }]}
+                        />
+
+                        <TouchableOpacity
+                            onPress={handleSaveSosCode}
+                            disabled={savingSosCode || !sosCode || sosCode.length < 4}
+                            style={[tw`py-4 rounded-xl items-center`, { backgroundColor: "#dc2626" }, (savingSosCode || !sosCode || sosCode.length < 4) && tw`opacity-50`]}
+                        >
+                            {savingSosCode ? (
+                                <ActivityIndicator size="small" color="white" />
+                            ) : (
+                                <Text style={tw`text-white font-bold text-base`}>Save Secret Code</Text>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </ScrollView>
     );
 }

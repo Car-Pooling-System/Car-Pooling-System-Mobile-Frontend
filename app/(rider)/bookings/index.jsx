@@ -41,14 +41,25 @@ export default function Bookings() {
         const ride = item.ride || item;
         const dep = new Date(ride.schedule?.departureTime);
         const isPast = dep < new Date() || ride.status === "completed" || ride.status === "cancelled";
+        const isOngoing = ride.status === "ongoing";
 
         return (
             <TouchableOpacity
-                onPress={() => router.push({ pathname: "/my-rides/details", params: { rideId: ride._id, role: "rider" } })}
+                onPress={() => {
+                    if (isOngoing) {
+                        router.push({ pathname: "/(rider)/bookings/live-ride", params: { rideId: ride._id, role: "rider" } });
+                    } else {
+                        router.push({ pathname: "/my-rides/details", params: { rideId: ride._id, role: "rider" } });
+                    }
+                }}
                 activeOpacity={0.85}
                 style={[
                     tw`rounded-2xl p-4 mb-4`,
-                    { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+                    {
+                        backgroundColor: colors.surface,
+                        borderWidth: isOngoing ? 2 : 1,
+                        borderColor: isOngoing ? "#059669" : colors.border,
+                    },
                 ]}
             >
                 <View style={tw`flex-row justify-between items-start mb-3`}>
@@ -99,6 +110,19 @@ export default function Bookings() {
                     <View style={[tw`mt-3 flex-row items-center gap-1 px-2.5 py-1 rounded-full self-start`, { backgroundColor: "rgba(7,136,41,0.12)" }]}>
                         <Ionicons name="checkmark-circle" size={12} color={colors.success} />
                         <Text style={[tw`text-xs font-bold`, { color: colors.success }]}>Confirmed</Text>
+                    </View>
+                )}
+                {/* Active / Ongoing ride badge */}
+                {isOngoing && (
+                    <View style={tw`mt-3 flex-row items-center justify-between`}>
+                        <View style={[tw`flex-row items-center gap-1.5 px-3 py-1.5 rounded-full`, { backgroundColor: "#ecfdf5" }]}>
+                            <View style={[tw`w-2 h-2 rounded-full`, { backgroundColor: "#059669" }]} />
+                            <Text style={[tw`text-xs font-bold`, { color: "#059669" }]}>Active Ride</Text>
+                        </View>
+                        <View style={[tw`flex-row items-center gap-1 px-3 py-1.5 rounded-full`, { backgroundColor: "#059669" }]}>
+                            <Ionicons name="location" size={12} color="white" />
+                            <Text style={tw`text-xs font-bold text-white`}>Track Live</Text>
+                        </View>
                     </View>
                 )}
             </TouchableOpacity>

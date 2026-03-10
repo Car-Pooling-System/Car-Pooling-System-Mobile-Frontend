@@ -79,20 +79,40 @@ export default function RideDetails() {
     const [seatAssignments, setSeatAssignments] = useState({});
     const [showSeatPicker, setShowSeatPicker] = useState(null); // passengerUserId
     const [changingSeat, setChangingSeat] = useState(null);
+    const [startingRide, setStartingRide] = useState(false);
 
     /* ── Chat helpers ── */
     const openDMChat = async (targetUser, targetRole) => {
         try {
             const myRole = role === "driver" ? "driver" : "rider";
             const otherRole = targetRole || (myRole === "driver" ? "rider" : "driver");
-            console.log(`[Chat] openDMChat → ${targetUser.name} (${otherRole}), I am ${myRole}`);
+
+            // If the target is a guest passenger, redirect to the person who booked them
+            let resolvedTarget = targetUser;
+            let chatTitle = targetUser.name;
+            if (targetUser.isGuest && targetUser.bookedBy) {
+                const booker = ride?.passengers?.find(
+                    p => p.userId === targetUser.bookedBy && !p.isGuest
+                );
+                if (booker) {
+                    resolvedTarget = { userId: booker.userId, name: booker.name, profileImage: booker.profileImage };
+                    chatTitle = `${booker.name} (re: ${targetUser.name})`;
+                } else {
+                    // Booker may not be riding — use bookedBy id directly
+                    resolvedTarget = { userId: targetUser.bookedBy, name: targetUser.bookedBy, profileImage: "" };
+                    chatTitle = `Booker of ${targetUser.name}`;
+                }
+                console.log(`[Chat] Guest detected → redirecting to booker ${resolvedTarget.name}`);
+            }
+
+            console.log(`[Chat] openDMChat → ${resolvedTarget.name} (${otherRole}), I am ${myRole}`);
             const res = await fetch(`${BACKEND_URL}/api/chat/conversations/direct`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     participants: [
                         { userId: user.id, name: user.fullName || myRole, profileImage: user.imageUrl, role: myRole },
-                        { userId: targetUser.userId, name: targetUser.name, profileImage: targetUser.profileImage, role: otherRole },
+                        { userId: resolvedTarget.userId, name: resolvedTarget.name, profileImage: resolvedTarget.profileImage, role: otherRole },
                     ],
                 }),
             });
@@ -105,8 +125,8 @@ export default function RideDetails() {
                 pathname: chatPath,
                 params: {
                     conversationId: convo._id,
-                    title: targetUser.name,
-                    image: targetUser.profileImage || "",
+                    title: chatTitle,
+                    image: resolvedTarget.profileImage || "",
                     type: "direct",
                 },
             });
@@ -160,6 +180,80 @@ export default function RideDetails() {
         Linking.canOpenURL(url).then(supported => {
             Linking.openURL(supported ? url : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&destination_place_id=${label}`);
         });
+    };
+
+    /* ── Start Ride (driver) ── */
+    const handleStartRide = async () => {
+        const confirm = await new Promise((resolve) => {
+            Alert.alert(
+                "Start Ride",
+                "Are you sure you want to start this ride? All confirmed riders will be notified.",
+                [
+                    { text: "Not Yet", onPress: () => resolve(false), style: "cancel" },
+                    { text: "Start Ride", onPress: () => resolve(true) },
+                ]
+            );
+        });
+        if (!confirm) return;
+
+        setStartingRide(true);
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/rides/${rideId}/start`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ driverUserId: user.id }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                Alert.alert("🚗 Ride Started!", "All riders have been notified. Redirecting to live tracking...");
+                fetchRideDetails();
+                // Navigate to live ride map
+                router.push({
+                    pathname: "/(app)/my-rides/live-ride",
+                    params: { rideId, role: "driver" },
+                });
+            } else {
+                Alert.alert("Error", data.message || "Failed to start ride");
+            }
+        } catch (error) {
+            console.error("Error starting ride:", error);
+            Alert.alert("Error", "Failed to start ride. Please try again.");
+        } finally {
+            setStartingRide(false);
+        }
+    };
+
+    /* ── Ready for Pickup (rider) ── */
+    const handleReadyForPickup = async () => {
+        try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            let lat, lng;
+            if (status === 'granted') {
+                const loc = await Location.getCurrentPositionAsync({});
+                lat = loc.coords.latitude;
+                lng = loc.coords.longitude;
+            }
+
+            const response = await fetch(`${BACKEND_URL}/api/rides/${rideId}/rider-ready`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userId: user.id, lat, lng }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                Alert.alert("✅ Ready!", `Your OTP is: ${data.otp}\nShow this to the driver when boarding.`);
+                // Navigate to live ride screen
+                router.push({
+                    pathname: role === "rider" ? "/(rider)/bookings/live-ride" : "/(app)/my-rides/live-ride",
+                    params: { rideId, role: role || "rider", otp: data.otp },
+                });
+            } else {
+                Alert.alert("Error", data.message || "Failed to mark ready");
+            }
+        } catch (error) {
+            console.error("Error marking ready:", error);
+            Alert.alert("Error", "Failed to mark as ready. Please try again.");
+        }
     };
 
     const fetchRideDetails = useCallback(async () => {
@@ -264,10 +358,22 @@ export default function RideDetails() {
     };
 
     const handleCancel = async () => {
+        // Count how many entries belong to this user (self + guests they booked)
+        const myEntries = ride?.passengers?.filter(
+            p => (p.userId === user.id || p.bookedBy === user.id) &&
+                 (p.status === "confirmed" || p.status === "requested")
+        ) || [];
+        const seatCount = role === "driver" ? 0 : myEntries.length;
+        const cancelMsg = role === "driver"
+            ? "Are you sure you want to cancel this ride? All passengers will be notified."
+            : seatCount > 1
+                ? `Are you sure you want to cancel your booking? This will cancel all ${seatCount} seats (including guests you booked).`
+                : "Are you sure you want to cancel this booking?";
+
         const confirmCancel = await new Promise((resolve) => {
             Alert.alert(
-                "Cancel Ride",
-                `Are you sure you want to cancel this ${role === "driver" ? "ride" : "booking"}?`,
+                role === "driver" ? "Cancel Ride" : "Cancel Booking",
+                cancelMsg,
                 [
                     { text: "No", onPress: () => resolve(false), style: "cancel" },
                     { text: "Yes", onPress: () => resolve(true), style: "destructive" },
@@ -437,6 +543,18 @@ export default function RideDetails() {
     const isDriver = role === "driver";
     const canEditPrefs = isDriver && confirmedPassengers.length === 0;
     const isPast = departureTime < new Date() || ride.status === "completed" || ride.status === "cancelled";
+
+    // Live Ride computed flags
+    const isOngoing = ride.status === "ongoing";
+    const now = new Date();
+    const diffMs = departureTime.getTime() - now.getTime();
+    const oneHourMs = 60 * 60 * 1000;
+    const canStartRide = isDriver && ride.status === "scheduled" && diffMs <= oneHourMs && !isPast;
+
+    // For rider: check if this user's passenger entry is marked ready
+    const myPassenger = !isDriver ? passengers?.find(p => p.userId === user?.id && p.status === "confirmed") : null;
+    const amReady = myPassenger?.isReady || false;
+    const amBoarded = myPassenger?.isBoarded || false;
 
     return (
         <View style={[tw`flex-1`, { backgroundColor: colors.background }]}>
@@ -934,12 +1052,19 @@ export default function RideDetails() {
                                             <Image source={{ uri: passenger.profileImage }} style={tw`w-10 h-10 rounded-full mr-3`} />
                                         ) : (
                                             <View style={[tw`w-10 h-10 rounded-full items-center justify-center mr-3`, { backgroundColor: colors.surfaceMuted }]}>
-                                                <Ionicons name="person" size={18} color={colors.textMuted} />
+                                                <Ionicons name={passenger.isGuest ? "people" : "person"} size={18} color={colors.textMuted} />
                                             </View>
                                         )}
                                         <View style={tw`flex-1`}>
-                                            <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{passenger.name}</Text>
-                                            <View style={tw`flex-row items-center gap-2`}>
+                                            <View style={tw`flex-row items-center gap-1.5`}>
+                                                <Text style={[tw`text-sm font-bold`, { color: colors.textPrimary }]}>{passenger.name}</Text>
+                                                {passenger.isGuest && (
+                                                    <View style={[tw`px-1.5 py-0.5 rounded`, { backgroundColor: "rgba(245,158,11,0.12)" }]}>
+                                                        <Text style={[tw`text-[8px] font-bold`, { color: "#f59e0b" }]}>GUEST</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            <View style={tw`flex-row items-center gap-2 flex-wrap`}>
                                                 <Text style={[tw`text-xs font-bold`, { color: colors.primary }]}>₹{passenger.farePaid}</Text>
                                                 {passenger.seatLabel && (
                                                     <View style={[tw`flex-row items-center gap-0.5 px-1.5 py-0.5 rounded-full`, { backgroundColor: colors.primarySoft }]}>
@@ -947,6 +1072,12 @@ export default function RideDetails() {
                                                         <Text style={[tw`text-[9px] font-bold`, { color: colors.primary }]}>{passenger.seatLabel}</Text>
                                                     </View>
                                                 )}
+                                                {passenger.isGuest && passenger.bookedBy && (() => {
+                                                    const booker = passengers?.find(p => p.userId === passenger.bookedBy && !p.isGuest);
+                                                    return booker ? (
+                                                        <Text style={[tw`text-[9px]`, { color: colors.textMuted }]}>via {booker.name?.split(" ")[0]}</Text>
+                                                    ) : null;
+                                                })()}
                                             </View>
                                         </View>
                                         <TouchableOpacity onPress={() => openDMChat(passenger, "rider")} style={[tw`p-2 rounded-full`, { backgroundColor: colors.primarySoft }]}>
@@ -1034,6 +1165,79 @@ export default function RideDetails() {
                             </View>
                         </View>
                     </View>
+
+                    {/* ── Live Ride Actions ─────────────────────────────── */}
+                    {/* Driver: Start Ride (within 1 hour of departure) */}
+                    {canStartRide && (
+                        <TouchableOpacity
+                            style={[tw`py-4 rounded-xl items-center mb-4`, { backgroundColor: "#059669" }, startingRide && tw`opacity-50`]}
+                            onPress={handleStartRide}
+                            disabled={startingRide}
+                        >
+                            {startingRide ? (
+                                <ActivityIndicator size="small" color="#ffffff" />
+                            ) : (
+                                <View style={tw`flex-row items-center gap-2`}>
+                                    <Ionicons name="play-circle" size={22} color="white" />
+                                    <Text style={tw`text-white font-bold text-base`}>Start Ride</Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                    )}
+
+                    {/* Driver: Go to Live Tracking (ride already ongoing) */}
+                    {isDriver && isOngoing && (
+                        <TouchableOpacity
+                            style={[tw`py-4 rounded-xl items-center mb-4`, { backgroundColor: "#059669" }]}
+                            onPress={() => router.push({
+                                pathname: "/(app)/my-rides/live-ride",
+                                params: { rideId, role: "driver" },
+                            })}
+                        >
+                            <View style={tw`flex-row items-center gap-2`}>
+                                <Ionicons name="location" size={22} color="white" />
+                                <Text style={tw`text-white font-bold text-base`}>Track Live Ride</Text>
+                            </View>
+                        </TouchableOpacity>
+                    )}
+
+                    {/* Rider: Ready for Pickup or Track Live (ride is ongoing) */}
+                    {!isDriver && isOngoing && !amBoarded && (
+                        <View style={tw`mb-4`}>
+                            {!amReady ? (
+                                <TouchableOpacity
+                                    style={[tw`py-4 rounded-xl items-center`, { backgroundColor: "#059669" }]}
+                                    onPress={handleReadyForPickup}
+                                >
+                                    <View style={tw`flex-row items-center gap-2`}>
+                                        <Ionicons name="hand-left" size={22} color="white" />
+                                        <Text style={tw`text-white font-bold text-base`}>Ready for Pickup</Text>
+                                    </View>
+                                </TouchableOpacity>
+                            ) : (
+                                <TouchableOpacity
+                                    style={[tw`py-4 rounded-xl items-center`, { backgroundColor: colors.primary }]}
+                                    onPress={() => router.push({
+                                        pathname: role === "rider" ? "/(rider)/bookings/live-ride" : "/(app)/my-rides/live-ride",
+                                        params: { rideId, role: role || "rider" },
+                                    })}
+                                >
+                                    <View style={tw`flex-row items-center gap-2`}>
+                                        <Ionicons name="location" size={22} color="white" />
+                                        <Text style={tw`text-white font-bold text-base`}>Track Live Ride</Text>
+                                    </View>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    )}
+
+                    {/* Rider: Already boarded badge */}
+                    {!isDriver && isOngoing && amBoarded && (
+                        <View style={[tw`py-4 rounded-xl items-center mb-4 flex-row justify-center gap-2`, { backgroundColor: "#ecfdf5", borderWidth: 1, borderColor: "#a7f3d0" }]}>
+                            <Ionicons name="checkmark-circle" size={22} color="#059669" />
+                            <Text style={[tw`font-bold text-base`, { color: "#059669" }]}>You're on board! Enjoy the ride 🚗</Text>
+                        </View>
+                    )}
 
                     {/* Cancellation Button */}
                     {!isPast && (

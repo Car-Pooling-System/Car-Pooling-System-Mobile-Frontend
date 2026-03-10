@@ -5,6 +5,7 @@ export default function MyRidesLayout() {
         <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="details" />
+            <Stack.Screen name="live-ride" />
         </Stack>
     );
 }
