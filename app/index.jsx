@@ -1,87 +1,26 @@
-import { View, Text, Pressable } from "react-native";
-import { useRouter } from "expo-router";
+import { Redirect } from "expo-router";
+import { useAuth, useUser } from "@clerk/clerk-expo";
+import { ActivityIndicator, View } from "react-native";
 
-export default function Home() {
+export default function Index() {
+    const { isSignedIn, isLoaded } = useAuth();
+    const { user } = useUser();
 
-  const router = useRouter();
+    if (!isLoaded) {
+        return (
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                <ActivityIndicator size="large" />
+            </View>
+        );
+    }
 
-  return (
+    if (isSignedIn && user?.unsafeMetadata?.role === "driver") {
+        return <Redirect href="/(app)/my-rides" />;
+    }
 
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "#f4f6f8",
-        padding: 20,
-      }}
-    >
+    if (isSignedIn && user?.unsafeMetadata?.role === "rider") {
+        return <Redirect href="/(rider)/search" />;
+    }
 
-      {/* TITLE */}
-
-      <Text
-        style={{
-          fontSize: 26,
-          fontWeight: "bold",
-          marginBottom: 30,
-        }}
-      >
-        Car Pooling App
-      </Text>
-
-
-      {/* PAYMENT BUTTON */}
-
-      <Pressable
-        onPress={() => router.push("/payment")}
-        style={{
-          backgroundColor: "#0a84ff",
-          paddingVertical: 15,
-          paddingHorizontal: 30,
-          borderRadius: 10,
-          marginBottom: 15,
-        }}
-      >
-
-        <Text
-          style={{
-            color: "white",
-            fontSize: 16,
-            fontWeight: "600",
-          }}
-        >
-          Open Payment Module
-        </Text>
-
-      </Pressable>
-
-
-      {/* DRIVER PROFILE BUTTON (optional future use) */}
-
-      <Pressable
-        onPress={() => router.push("/profile")}
-        style={{
-          backgroundColor: "#34c759",
-          paddingVertical: 15,
-          paddingHorizontal: 30,
-          borderRadius: 10,
-        }}
-      >
-
-        <Text
-          style={{
-            color: "white",
-            fontSize: 16,
-            fontWeight: "600",
-          }}
-        >
-          Driver Profile
-        </Text>
-
-      </Pressable>
-
-    </View>
-
-  );
-
+    return <Redirect href="/(auth)/sign-in" />;
 }

@@ -8,11 +8,12 @@ import { Redirect } from "expo-router";
 export default function TabsLayout() {
     const { user } = useUser();
     const { isSignedIn } = useAuth();
-    if (!isSignedIn) {
-        return <Redirect href={"/(auth)/sign-in"} />
-    }
     const scheme = useColorScheme();
     const colors = theme[scheme ?? "light"];
+
+    if (!isSignedIn) {
+        return <Redirect href={"/(auth)/sign-in"} />;
+    }
 
     return (
         <Tabs
@@ -33,10 +34,12 @@ export default function TabsLayout() {
                 tabBarIcon: ({ focused, color, size }) => {
                     let iconName;
 
-                    if (route.name === "hosting/index") {
+                    if (route.name === "hosting") {
                         iconName = focused ? "add-circle" : "add-circle-outline";
-                    } else if (route.name === "my-rides/index") {
+                    } else if (route.name === "my-rides") {
                         iconName = focused ? "car" : "car-outline";
+                    } else if (route.name === "chat") {
+                        iconName = focused ? "chatbubbles" : "chatbubbles-outline";
                     } else if (route.name === "profile") {
                         iconName = focused ? "person" : "person-outline";
                     } else {
@@ -58,8 +61,9 @@ export default function TabsLayout() {
                 },
             })}
         >
-            <Tabs.Screen name="my-rides/index" options={{ title: "My Rides" }} />
-            <Tabs.Screen name="hosting/index" options={{ title: "Create Ride" }} />
+            <Tabs.Screen name="my-rides" options={{ title: "My Rides" }} />
+            <Tabs.Screen name="hosting" options={{ title: "Create Ride" }} />
+            <Tabs.Screen name="chat" options={{ title: "Chat" }} />
             <Tabs.Screen name="profile" options={{ title: "Profile" }} />
         </Tabs>
     );

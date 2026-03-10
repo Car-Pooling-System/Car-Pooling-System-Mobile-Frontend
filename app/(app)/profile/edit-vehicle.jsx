@@ -1,8 +1,9 @@
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Alert, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Alert, ActivityIndicator, Switch } from "react-native";
 import { useState } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import tw from "twrnc";
 import { uploadToStorage, deleteMultipleFromStorage } from "../../../utils/uploadToStorage";
 import { uriToBlob, getFileExtension } from "../../../utils/imageHelper";
@@ -17,15 +18,21 @@ export default function EditVehicle() {
 
     // Parse the vehicle data from params
     const vehicleData = params.vehicle ? JSON.parse(params.vehicle) : {};
+    const mode = params.mode || "edit"; // "add" or "edit"
+    const vehicleIndex = params.vehicleIndex !== undefined ? parseInt(params.vehicleIndex) : null;
 
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [insuranceVerifying, setInsuranceVerifying] = useState(false);
     const [formData, setFormData] = useState({
         brand: vehicleData.brand || "",
         model: vehicleData.model || "",
         year: vehicleData.year || "",
         color: vehicleData.color || "",
         licensePlate: vehicleData.licensePlate || "",
+        totalSeats: vehicleData.totalSeats || 4,
+        hasLuggageSpace: vehicleData.hasLuggageSpace || false,
+        insuranceVerified: vehicleData.insuranceVerified || false,
         images: vehicleData.images || []
     });
 
@@ -101,6 +108,26 @@ export default function EditVehicle() {
         );
     };
 
+    const handleMockInsurance = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: '*/*',
+                copyToCacheDirectory: false,
+            });
+            if (result.canceled || !result.assets?.length) return;
+
+            setInsuranceVerifying(true);
+            // Mock: 1.5s simulated verification — always passes
+            await new Promise(r => setTimeout(r, 1500));
+            setFormData(prev => ({ ...prev, insuranceVerified: true }));
+            Alert.alert("Insurance Verified ✓", "Document accepted. Tap Save to confirm.");
+        } catch (e) {
+            Alert.alert("Error", "Could not process document. Please try again.");
+        } finally {
+            setInsuranceVerifying(false);
+        }
+    };
+
     const handleSave = async () => {
         // Validation
         if (!formData.brand || !formData.model || !formData.year || !formData.color || !formData.licensePlate) {
@@ -110,33 +137,53 @@ export default function EditVehicle() {
 
         setLoading(true);
         try {
-            const response = await fetch(`${BACKEND_URL}/api/driver-vehicle/${user.id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    vehicle: formData
-                })
-            });
+            if (mode === "add") {
+                // Adding a new vehicle
+                const response = await fetch(`${BACKEND_URL}/api/driver-vehicles/${user.id}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
 
-            if (!response.ok) {
-                throw new Error('Failed to update vehicle');
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.message || 'Failed to add vehicle');
+                }
+
+                Alert.alert("Success", "Vehicle added successfully", [
+                    { text: "OK", onPress: () => router.back() }
+                ]);
+            } else {
+                // Editing an existing vehicle
+                const response = await fetch(`${BACKEND_URL}/api/driver-vehicles/${user.id}/${vehicleIndex}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.message || 'Failed to update vehicle');
+                }
+
+                // Delete old images from storage if they were replaced
+                const oldImages = vehicleData.images || [];
+                const removedImages = oldImages.filter(img => !formData.images.includes(img));
+                if (removedImages.length > 0) {
+                    await deleteMultipleFromStorage(removedImages);
+                }
+
+                Alert.alert("Success", "Vehicle updated successfully", [
+                    { text: "OK", onPress: () => router.back() }
+                ]);
             }
-
-            // Delete old images from storage if they were replaced
-            const oldImages = vehicleData.images || [];
-            const removedImages = oldImages.filter(img => !formData.images.includes(img));
-            if (removedImages.length > 0) {
-                await deleteMultipleFromStorage(removedImages);
-            }
-
-            Alert.alert("Success", "Vehicle details updated successfully", [
-                { text: "OK", onPress: () => router.back() }
-            ]);
         } catch (error) {
-            console.error("Error updating vehicle:", error);
-            Alert.alert("Error", "Failed to update vehicle details");
+            console.error("Error saving vehicle:", error);
+            Alert.alert("Error", mode === "add" ? "Failed to add vehicle" : "Failed to update vehicle");
         } finally {
             setLoading(false);
         }
@@ -145,12 +192,14 @@ export default function EditVehicle() {
     return (
         <View style={tw`flex-1 bg-gray-50`}>
             {/* Header */}
-            <View style={tw`bg-white px-4 pt-12 pb-4 shadow-sm`}>
+            <View style={tw`bg-white px-4 pt-6 pb-4 shadow-sm`}>
                 <View style={tw`flex-row items-center`}>
                     <TouchableOpacity onPress={() => router.back()} style={tw`mr-4`}>
                         <Ionicons name="arrow-back" size={24} color="#000" />
                     </TouchableOpacity>
-                    <Text style={tw`text-xl font-bold flex-1`}>Edit Vehicle Details</Text>
+                    <Text style={tw`text-xl font-bold flex-1`}>
+                        {mode === "add" ? "Add Vehicle" : "Edit Vehicle"}
+                    </Text>
                     <TouchableOpacity onPress={handleSave} disabled={loading}>
                         {loading ? (
                             <ActivityIndicator size="small" color="#007AFF" />
@@ -207,6 +256,70 @@ export default function EditVehicle() {
                         placeholder="e.g., ABC 123"
                         autoCapitalize="characters"
                     />
+
+                    <Text style={tw`text-gray-700 mb-2`}>Total Passenger Seats</Text>
+                    <Text style={tw`text-gray-400 text-xs mb-3`}>Maximum number of passengers this vehicle can carry (excluding driver)</Text>
+                    <View style={tw`flex-row items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-4`}>
+                        <TouchableOpacity
+                            onPress={() => setFormData(prev => ({ ...prev, totalSeats: Math.max(1, prev.totalSeats - 1) }))}
+                            style={tw`w-9 h-9 bg-gray-200 rounded-full items-center justify-center`}
+                        >
+                            <Ionicons name="remove" size={20} color="#374151" />
+                        </TouchableOpacity>
+                        <View style={tw`items-center`}>
+                            <Text style={tw`text-2xl font-bold text-gray-900`}>{formData.totalSeats}</Text>
+                            <Text style={tw`text-xs text-gray-400`}>seat{formData.totalSeats !== 1 ? 's' : ''}</Text>
+                        </View>
+                        <TouchableOpacity
+                            onPress={() => setFormData(prev => ({ ...prev, totalSeats: Math.min(12, prev.totalSeats + 1) }))}
+                            style={tw`w-9 h-9 bg-blue-500 rounded-full items-center justify-center`}
+                        >
+                            <Ionicons name="add" size={20} color="white" />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Luggage Space */}
+                    <View style={tw`flex-row items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-4`}>
+                        <View style={tw`flex-1`}>
+                            <Text style={tw`text-gray-700 font-medium`}>Luggage Space Available</Text>
+                            <Text style={tw`text-gray-400 text-xs mt-0.5`}>Does your vehicle have boot/trunk space for luggage?</Text>
+                        </View>
+                        <Switch
+                            value={formData.hasLuggageSpace}
+                            onValueChange={(val) => setFormData(prev => ({ ...prev, hasLuggageSpace: val }))}
+                            trackColor={{ false: "#d1d5db", true: "#86efac" }}
+                            thumbColor={formData.hasLuggageSpace ? "#16a34a" : "#f4f3f4"}
+                        />
+                    </View>
+
+                    {/* Vehicle Insurance */}
+                    <View style={tw`flex-row items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-4`}>
+                        <View style={tw`flex-1 mr-3`}>
+                            <Text style={tw`text-gray-700 font-medium`}>Vehicle Insurance</Text>
+                            <Text style={tw`text-gray-400 text-xs mt-0.5`}>
+                                {formData.insuranceVerified ? 'Insurance document verified' : 'Upload insurance document to verify'}
+                            </Text>
+                        </View>
+                        {formData.insuranceVerified ? (
+                            <View style={tw`flex-row items-center gap-1`}>
+                                <Ionicons name="shield-checkmark" size={18} color="#10b981" />
+                                <Text style={tw`text-green-600 font-bold text-sm`}>Verified</Text>
+                            </View>
+                        ) : insuranceVerifying ? (
+                            <View style={tw`flex-row items-center gap-2`}>
+                                <ActivityIndicator size="small" color="#007AFF" />
+                                <Text style={tw`text-gray-500 text-xs`}>Verifying...</Text>
+                            </View>
+                        ) : (
+                            <TouchableOpacity
+                                onPress={handleMockInsurance}
+                                style={tw`bg-blue-500 px-3 py-2 rounded-lg flex-row items-center gap-1`}
+                            >
+                                <Ionicons name="cloud-upload-outline" size={14} color="white" />
+                                <Text style={tw`text-white font-semibold text-xs`}>Upload</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
 
                 {/* Vehicle Images */}
