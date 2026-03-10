@@ -118,23 +118,27 @@ export default function LiveRide() {
     useEffect(() => {
         let sub;
         (async () => {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== "granted") return;
-            sub = await Location.watchPositionAsync(
-                { accuracy: Location.Accuracy.High, distanceInterval: 20, timeInterval: 5000 },
-                (loc) => {
-                    const { latitude, longitude } = loc.coords;
-                    setMyLocation({ lat: latitude, lng: longitude });
-                    if (socket && rideId) {
-                        socket.emit("location-update", { rideId, lat: latitude, lng: longitude, role: isDriver ? "driver" : "rider", name: user?.fullName || (isDriver ? "Driver" : "Rider"), profileImage: user?.imageUrl || "" });
+            try {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status !== "granted") return;
+                sub = await Location.watchPositionAsync(
+                    { accuracy: Location.Accuracy.High, distanceInterval: 20, timeInterval: 5000 },
+                    (loc) => {
+                        const { latitude, longitude } = loc.coords;
+                        setMyLocation({ lat: latitude, lng: longitude });
+                        if (socket && rideId) {
+                            socket.emit("location-update", { rideId, lat: latitude, lng: longitude, role: isDriver ? "driver" : "rider", name: user?.fullName || (isDriver ? "Driver" : "Rider"), profileImage: user?.imageUrl || "" });
+                        }
+                        fetch(`${BACKEND_URL}/api/rides/${rideId}/update-location`, {
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ userId: user?.id, lat: latitude, lng: longitude }),
+                        }).catch(() => {});
                     }
-                    fetch(`${BACKEND_URL}/api/rides/${rideId}/update-location`, {
-                        method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ userId: user?.id, lat: latitude, lng: longitude }),
-                    }).catch(() => {});
-                }
-            );
-            locationSubRef.current = sub;
+                );
+                locationSubRef.current = sub;
+            } catch (error) {
+                console.warn("Live ride location watcher unavailable:", error?.message || error);
+            }
         })();
         return () => { if (locationSubRef.current) locationSubRef.current.remove(); };
     }, [socket, rideId, isDriver, user]);

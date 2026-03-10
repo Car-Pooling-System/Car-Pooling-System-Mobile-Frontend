@@ -281,12 +281,16 @@ export default function RideDetails() {
     useEffect(() => {
         if (role !== 'driver' || !ride) return;
         (async () => {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') return;
-            const loc = await Location.getCurrentPositionAsync({});
-            const coords = ride.route?.start?.location?.coordinates;
-            if (coords) {
-                setDistanceToPickup(haversineKm(loc.coords.latitude, loc.coords.longitude, coords[1], coords[0]));
+            try {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status !== 'granted') return;
+                const loc = await Location.getCurrentPositionAsync({});
+                const coords = ride.route?.start?.location?.coordinates;
+                if (coords) {
+                    setDistanceToPickup(haversineKm(loc.coords.latitude, loc.coords.longitude, coords[1], coords[0]));
+                }
+            } catch (error) {
+                console.warn("Current location unavailable in ride details:", error?.message || error);
             }
         })();
     }, [role, ride]);
