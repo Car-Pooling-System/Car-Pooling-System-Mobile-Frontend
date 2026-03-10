@@ -153,10 +153,14 @@ export default function CreateRide() {
     /* ── Current location ── */
     useEffect(() => {
         (async () => {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== "granted") return;
-            const loc = await Location.getCurrentPositionAsync({});
-            setCurrentLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+            try {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status !== "granted") return;
+                const loc = await Location.getCurrentPositionAsync({});
+                setCurrentLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+            } catch (error) {
+                console.warn("Current location unavailable in hosting screen:", error?.message || error);
+            }
         })();
     }, []);
 

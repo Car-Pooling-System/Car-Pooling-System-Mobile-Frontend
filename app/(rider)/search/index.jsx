@@ -378,7 +378,10 @@ export default function SearchRides() {
                     });
                     setNearbyRides(filtered);
                 }
-            } catch (e) { console.log("Nearby rides fetch failed:", e.message); }
+            } catch (e) {
+                console.log("Nearby rides fetch failed:", e.message);
+                if (!cancelled) setLocationDenied(true);
+            }
             finally { if (!cancelled) setNearbyLoading(false); }
         })();
         return () => { cancelled = true; };
