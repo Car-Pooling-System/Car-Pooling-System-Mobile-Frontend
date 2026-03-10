@@ -383,6 +383,12 @@ export default function LiveRide() {
                                             <Text style={[tw`text-[10px] mt-0.5`, { color: statusColor }]}>
                                                 {p.isDropped ? "📍 Dropped off" : p.isBoarded ? "✓ On board" : p.isReady ? "🙋 Ready — tap to verify" : "⏳ Waiting..."}
                                             </Text>
+                                            {p.isGuest && p.bookedBy && (() => {
+                                                const booker = confirmedPassengers.find(b => b.userId === p.bookedBy && !b.isGuest);
+                                                return booker ? (
+                                                    <Text style={[tw`text-[9px]`, { color: colors.textMuted }]}>Booked by {booker.name?.split(" ")[0]}</Text>
+                                                ) : null;
+                                            })()}
                                         </View>
                                     </View>
                                     <View style={tw`flex-row items-center gap-2`}>
@@ -453,6 +459,12 @@ export default function LiveRide() {
                                     )}
                                 </View>
                                 <Text style={[tw`text-xs`, { color: "#f59e0b" }]}>🙋 Ready for pickup</Text>
+                                {selectedPassenger?.isGuest && selectedPassenger?.bookedBy && (() => {
+                                    const booker = confirmedPassengers.find(b => b.userId === selectedPassenger.bookedBy && !b.isGuest);
+                                    return booker ? (
+                                        <Text style={[tw`text-[10px]`, { color: colors.textMuted }]}>Booked by {booker.name}</Text>
+                                    ) : null;
+                                })()}
                             </View>
                         </View>
                         <TextInput value={otpInput} onChangeText={setOtpInput} keyboardType="number-pad" maxLength={4} placeholder="Enter 4-digit OTP" placeholderTextColor={colors.textMuted}
